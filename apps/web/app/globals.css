@@ -2133,6 +2133,12 @@ li.hub-season-row.untracked {
   text-decoration: underline;
 }
 
+.push-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .push-input {
   width: 100%;
   padding: 10px 14px;
@@ -2142,6 +2148,32 @@ li.hub-season-row.untracked {
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: var(--radius-md);
   transition: border-color 0.15s ease;
+}
+
+.push-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.push-clear:hover {
+  color: var(--warning);
+  border-color: var(--warning);
+}
+
+.push-clear:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .push-input:focus {

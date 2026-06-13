@@ -180,6 +180,26 @@ export async function savePushSettingsAction(
   }
 }
 
+const PUSH_CHANNEL_KEYS = ["bark", "serverchan", "wecom", "webhook"] as const;
+
+/**
+ * Wipe a saved push channel. Empty-on-save means "leave unchanged" (so a masked
+ * key is never clobbered), which left no way to REMOVE a channel — this is that
+ * affordance. Storing "" makes the channel read back as unconfigured.
+ */
+export async function clearPushChannelAction(key: string): Promise<PushSettingsActionResult> {
+  if (!(PUSH_CHANNEL_KEYS as readonly string[]).includes(key)) {
+    return { success: false, message: "未知的推送渠道" };
+  }
+  try {
+    const { getWorkflowRepository } = await import("../lib/workflow-runtime");
+    await getWorkflowRepository().setSetting(`push_${key}`, "");
+    return { success: true };
+  } catch (error) {
+    return { success: false, message: `清除失败：${String(error)}` };
+  }
+}
+
 export async function savePreferredLanguageAction(
   language: string,
 ): Promise<PushSettingsActionResult> {

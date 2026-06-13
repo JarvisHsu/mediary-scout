@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Bell, ExternalLink, LoaderCircle } from "lucide-react";
-import { savePushSettingsAction, testPushNotificationAction } from "../app/actions";
+import { Bell, ExternalLink, LoaderCircle, Trash2 } from "lucide-react";
+import {
+  clearPushChannelAction,
+  savePushSettingsAction,
+  testPushNotificationAction,
+} from "../app/actions";
 
 const CHANNELS = [
   {
@@ -59,6 +63,24 @@ export function PushNotificationForm({ configured }: { configured: Record<string
     });
   };
 
+  const handleClear = (key: string) => {
+    startTransition(async () => {
+      const result = await clearPushChannelAction(key);
+      if (result.success) {
+        setSavedChannels((prev) => ({ ...prev, [key]: false }));
+        setValues((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        setTestResult("✅ 已清除");
+      } else {
+        setTestResult(`❌ ${result.message}`);
+      }
+      setTimeout(() => setTestResult(null), 3000);
+    });
+  };
+
   const handleTest = () => {
     startTransition(async () => {
       const result = await testPushNotificationAction(values);
@@ -89,14 +111,28 @@ export function PushNotificationForm({ configured }: { configured: Record<string
               ) : null}
             </span>
           </label>
-          <input
-            type="text"
-            className="push-input"
-            placeholder={savedChannels[channel.key] ? "已保存 ••••••（留空则保持不变）" : channel.placeholder}
-            value={values[channel.key] ?? ""}
-            onChange={(e) => setValues({ ...values, [channel.key]: e.target.value })}
-            disabled={isPending}
-          />
+          <div className="push-input-row">
+            <input
+              type="text"
+              className="push-input"
+              placeholder={savedChannels[channel.key] ? "已保存 ••••••（留空则保持不变）" : channel.placeholder}
+              value={values[channel.key] ?? ""}
+              onChange={(e) => setValues({ ...values, [channel.key]: e.target.value })}
+              disabled={isPending}
+            />
+            {savedChannels[channel.key] ? (
+              <button
+                type="button"
+                className="push-clear"
+                title="清除该渠道"
+                onClick={() => handleClear(channel.key)}
+                disabled={isPending}
+              >
+                <Trash2 size={13} aria-hidden />
+                清除
+              </button>
+            ) : null}
+          </div>
         </div>
       ))}
 
