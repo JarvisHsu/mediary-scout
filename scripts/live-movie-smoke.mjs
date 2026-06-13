@@ -120,6 +120,25 @@ console.log("[4/4] verifying persisted run and physical files ...");
 if (result.status === "ran") {
   const snapshot = await repository.getWorkflowRunSnapshot(result.workflowRunId);
   console.log("      workflow status:", snapshot?.workflowRun.status);
+  console.log(
+    "      searched keywords:",
+    JSON.stringify([...new Set((snapshot?.resourceSnapshots ?? []).map((s) => s.keyword))]),
+  );
+  console.log(
+    "      decisions:",
+    JSON.stringify((snapshot?.decisions ?? []).map((d) => ({ selected: d.selectedCandidateIds, reason: d.reason }))),
+  );
+  console.log(
+    "      transferAttempts:",
+    JSON.stringify(
+      (snapshot?.transferAttempts ?? []).map((t) => ({
+        candidateId: t.candidateId,
+        status: t.status,
+        msg: t.providerMessage,
+        materialized: t.materializedFileIds.length,
+      })),
+    ),
+  );
   const movieDir = snapshot?.season.storageDirectoryId ?? "";
   console.log("      movie directory:", movieDir || "(none — no_coverage)");
   if (movieDir) {

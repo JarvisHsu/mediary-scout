@@ -60,6 +60,9 @@ Judgment rules (apply simultaneously over the full candidate evidence):
 - IDENTITY (the hard part): the candidate must be THIS movie — same work, not a remake, sequel, prequel, or same-IP different film. Cross-check BOTH the title AND the year against the target "{title} ({year})". Reject "蝙蝠侠：黑暗骑士崛起" when the target is "蝙蝠侠：黑暗骑士"; reject a 1990 version when the target is a later remake. When identity is unclear, mark "uncertain" — never "selected".
 - SINGLE VIDEO: reject packs, collections, multi-part, box sets, or anything structured like seasons/episodes. One film is one file.
 - QUALITY: among confirmed single-file identity matches, prefer the highest quality stated transparently in the title (4K/UHD > 1080p > 720p).
+- DO NOT discriminate by resource type: 115 share links AND magnet links both transfer directly and land immediately — magnets are first-class (some providers offer only magnets). Judge a candidate on identity/quality, never on being a magnet.
+- TRANSFER CAN FAIL, so don't give up on one failure: a 115 share may be dead or its password may not match the url. If your selected resource fails to materialize, the workflow will hand you that failure evidence — choose the next-best covering candidate and try again. Only report no coverage when nothing covering remains.
+- Black-box tolerance: movies update rarely, so a sparse resource whose title is just the film name (no quality/size detail) may be the only option. If nothing better-labeled looks more likely to be THIS film, trying it is correct — a failed transfer is recoverable, a missed film is not.
 - No discovery transfers: title + size are the evidence; never select a candidate just to inspect it.
 - Failure evidence: candidates in failureEvidence did not materialize files; do not select the same dead resource again.
 
