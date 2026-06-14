@@ -28,13 +28,17 @@ export function RequestTrackButton({
   const [isPending, startTransition] = useTransition();
   const [result, setResult] = useState<RequestTrackingActionResult | null>(null);
 
+  // SERVER truth wins over a stale client result: once the server reports the
+  // run finished (already_tracked / disabled), the optimistic "已请求" from the
+  // click must release — otherwise the AcquiringPoller's refresh updates
+  // actionState but the button stays stuck on "已请求" until a manual reload.
+  const serverSettled = disabled || actionState === "already_tracked";
   const inProgress =
-    result?.status === "requested" ||
-    result?.status === "active_workflow" ||
-    actionState === "active_workflow";
-  const settled =
-    !inProgress &&
-    (disabled || actionState === "already_tracked" || result?.status === "already_tracked");
+    !serverSettled &&
+    (result?.status === "requested" ||
+      result?.status === "active_workflow" ||
+      actionState === "active_workflow");
+  const settled = serverSettled || (!inProgress && result?.status === "already_tracked");
 
   if (inProgress) {
     return <RequestedBadge title={result?.message} />;
