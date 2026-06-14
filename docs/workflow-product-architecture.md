@@ -522,15 +522,25 @@ Splitting them into sequential filters loses information between stages and
 invites mechanical glue logic to fill the gaps — exactly the Sonarr-shaped
 failure this product must avoid.
 
-The current node set (2026-06-12):
+The current implementation has several named specs, but the target ownership is
+two media-specific strong agents, not many atomized weak agents:
 
-| Node | Responsibility | Should See |
+| Agent line | Responsibility | Should See |
 | --- | --- | --- |
-| `AcquisitionPlanningAgent` | The whole acquisition deliberation: keyword strategy, target matching, episode mapping, selection, uncertainty | target metadata, quality preference, missing episodes, failure evidence, full snapshots via a read-only `searchResources` tool |
-| `PackageRecognitionAgent` | Map package/staging files to season/episode/residue semantics and propose scoped move/keep/delete/mark intents | complete raw package/staging/target tree, original filenames, paths, sizes, source ids, DB need state, optional non-authoritative parser hints |
-| `DedupAgent` (follow-up) | Map verified files to episodes semantically and propose scoped duplicate cleanup; size can break ties only after semantic grouping | complete raw verified file list, filenames, paths, sizes, DB obtained state, optional non-authoritative parser hints |
+| Movie / Type 1 agent | Movie acquisition deliberation, target matching, quality choice, primary-feature selection, duplicate-version judgment, extras/trailer/foreign-work rejection, scoped movie import/cleanup/mark intents | target metadata, aliases, quality preference, provider snapshots, transfer failure evidence, complete raw staging/movie target tree, original filenames, paths, sizes, source ids, optional non-authoritative parser hints |
+| TV/anime agent | Series acquisition deliberation, keyword strategy, target matching, season/episode coverage, package recognition, provider-ahead handling, residue classification, duplicate judgment, scoped season normalization/cleanup/mark intents | target metadata, seasons, missing/provider-ahead episodes, failure evidence, full provider snapshots via read-only `searchResources`, complete raw staging/target-season tree, optional non-authoritative parser hints |
 | `FailureExplainAgent` (future) | Convert failure state into user-facing explanation | workflow state, attempts, missing resources |
 | `NotificationAgent` (future) | Write notification text | verified outcome, remaining missing episodes |
+
+Current code names such as `MoviePlanningAgent`, `MovieMasterSelectionAgent`,
+`AcquisitionPlanningAgent`, and `PackageRecognitionAgent` can remain as
+transitional prompt/spec boundaries, but they must not become product authority
+boundaries. In particular, movie master selection / movie duplicate cleanup
+belongs to the movie agent line, and episode dedup belongs to the TV/anime agent
+line. A standalone `DedupAgent` should not be introduced merely for atomicity.
+If a future implementation keeps a separate prompt for formatting or validation,
+it must receive the full task evidence from its owning media agent context and
+return scoped intents, not local parser-table decisions.
 
 The planning agent is powerful inside its task sandbox but its output passes a
 hard contract before any side effect: the selected snapshot must have been
