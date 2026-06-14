@@ -163,4 +163,26 @@ export class TaskSandbox {
     const { deleted } = await this.storage.deleteFiles({ fileIds: input.fileIds });
     return { deleted, directory: await this.storage.listTree({ directoryId }) };
   }
+
+  /** Mark episodes obtained — but ONLY after a fresh reread confirms each
+   *  episode's backing file is in the season dir RIGHT NOW (§12). The DB must
+   *  never claim an episode the storage can't back. No persistent fileId↔episode
+   *  mapping: the agent asserts the pairing, the sandbox verifies it live. */
+  async markObtained(input: {
+    episodes: Array<{ code: string; fileId: string }>;
+  }): Promise<{ confirmed: Array<{ code: string; fileId: string }> }> {
+    if (!this.storage || !this.targetSeasonDirectoryId) {
+      throw new Error("SANDBOX: no storage/season handle configured");
+    }
+    const present = new Set(
+      (await this.storage.listTree({ directoryId: this.targetSeasonDirectoryId })).map((file) => file.id),
+    );
+    const missing = input.episodes.filter((episode) => !present.has(episode.fileId));
+    if (missing.length > 0) {
+      throw new Error(
+        `SANDBOX_MARK_FILE_NOT_PRESENT: ${missing.map((e) => `${e.code}->${e.fileId}`).join(",")}`,
+      );
+    }
+    return { confirmed: input.episodes };
+  }
 }
