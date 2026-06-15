@@ -21,8 +21,8 @@ describe("TaskSandbox — deleteFiles (agent-decided dedup/residue, scoped, rere
     const { sandbox } = await setup();
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand" });
-    const moved = await sandbox.moveToSeason({ fileIds: transfer.staging.map((f) => f.id), season: 1 });
-    const toDelete = moved.season.find((f) => f.path === "a.mkv")!.id;
+    const moved = await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: transfer.staging.map((f) => f.id) }] });
+    const toDelete = moved.seasons[1]!.find((f) => f.path === "a.mkv")!.id;
 
     const result = await sandbox.deleteFiles({ directory: "season", fileIds: [toDelete], season: 1 });
 

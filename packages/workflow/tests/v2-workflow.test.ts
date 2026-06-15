@@ -89,4 +89,26 @@ describe("runAcquisitionV2Workflow — outer orchestration (dirs → sync → ag
     expect(result.missingBefore).toEqual([]);
     expect(result.outcome.transferAttempts).toEqual([]);
   });
+
+  it("实有 comes from the DB marks (priorObtained), NOT a 115 scan — it narrows the need and drives obtained", async () => {
+    const executor = new FakeStorageExecutor();
+    const result = await runAcquisitionV2Workflow({
+      provider: emptyProvider(),
+      executor,
+      model: searchThenReportModel(), // finds no new coverage this run
+      workflowRunId: "run-3",
+      title: { name: "Show", year: 2024, aliases: [] },
+      categoryParentId: "tv_root",
+      seasons: [{ seasonNumber: 1, latestAiredEpisode: 3 }],
+      qualityPreference: "1080p",
+      priorObtained: ["S01E01"], // the DB already has E01 (agent marked it before)
+    });
+
+    // The need is aired − DB实有 = {E02,E03}; E01 is NOT re-needed (the old code
+    // scanned an empty 115 and would have re-needed all three).
+    expect(result.missingBefore).toEqual(["S01E02", "S01E03"]);
+    // obtained reflects the DB mark; stillMissing is the rest.
+    expect(result.obtained).toEqual(["S01E01"]);
+    expect(result.stillMissing).toEqual(["S01E02", "S01E03"]);
+  });
 });

@@ -42,7 +42,7 @@ export const INTERROGATION_QUESTIONS: readonly InterrogationQuestion[] = [
   {
     id: "mark_obtained",
     prompt: "你怎么标记某一集已获取?在标记之前你需要确认什么?",
-    expectation: "先确认该集的文件此刻确实在 Season 目录里(重读),再 markObtained;不靠文件名编码身份、不维护映射层。",
+    expectation: "markObtained 是最后一步:先 move 进对应季目录、flatten 清壳,看 inspectTargetDir 确认正片此刻就位,才声明已获取的 codes;不靠文件名编码身份、不维护映射层、不指望系统机械回读替你核。",
   },
   {
     id: "overlapping_ranges",
@@ -65,7 +65,7 @@ export const INTERROGATION_QUESTIONS: readonly InterrogationQuestion[] = [
     prompt:
       "换个剧:你要获取《绝命毒师》全部 5 季,缺集横跨多个季。PanSou 返回一个『绝命毒师 全五季』完整包(里面是 Season 1 / Season 2 / ... 的嵌套目录)。你怎么转?转存后怎么把文件放进各自的季目录?",
     expectation:
-      "只转这一个全集包(一次);转存后看真实 staging 的嵌套结构,按季把每个文件 moveToSeason(fileIds, season) 分发进它自己的 Season 目录,而不是全堆在一个目录。",
+      "只转这一个全集包(一次);转存后看真实 staging 的嵌套结构,提交一个分发计划 moveToSeason({moves:[{season,fileIds}]})、每季一条 move 把文件分发进它自己的 Season 目录(每个视频的字幕跟它同季同在 fileIds 里),而不是全堆在一个目录。",
   },
   {
     id: "partial_seasons_full_pack",

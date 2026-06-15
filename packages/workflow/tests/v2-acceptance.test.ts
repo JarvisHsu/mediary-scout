@@ -57,10 +57,8 @@ describe("§6b acceptance — the 12 invariants", () => {
     });
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "pack0" });
-    const moved = await sandbox.moveToSeason({ fileIds: transfer.staging.filter((f) => f.isVideo).map((f) => f.id), season: 1 });
-    await sandbox.markObtained({
-      episodes: moved.season.filter((f) => f.isVideo).map((f, i) => ({ code: need[i]!, fileId: f.id })),
-    });
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: transfer.staging.filter((f) => f.isVideo).map((f) => f.id) }] });
+    await sandbox.markObtained({ codes: need });
 
     // Every later overlapping pack is refused — the system, not the agent, enforces it.
     await expect(
@@ -79,10 +77,8 @@ describe("§6b acceptance — the 12 invariants", () => {
     // Agent predicted "only E01" but the forced reread returns all 13 — the truth.
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand_full" });
     expect(transfer.staging.filter((f) => f.isVideo)).toHaveLength(13);
-    const moved = await sandbox.moveToSeason({ fileIds: transfer.staging.filter((f) => f.isVideo).map((f) => f.id), season: 1 });
-    await sandbox.markObtained({
-      episodes: moved.season.filter((f) => f.isVideo).map((f, i) => ({ code: need[i]!, fileId: f.id })),
-    });
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: transfer.staging.filter((f) => f.isVideo).map((f) => f.id) }] });
+    await sandbox.markObtained({ codes: need });
     expect(sandbox.isCoverageMet()).toBe(true);
     await expect(
       sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand_extra" }),
@@ -140,7 +136,7 @@ describe("§6b acceptance — the 12 invariants", () => {
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand" });
     const target = transfer.staging.find((f) => f.path === "Show - 01.mkv")!;
-    await sandbox.moveToSeason({ fileIds: [target.id], season: 1 });
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: [target.id] }] });
 
     // Extras were NOT moved and NOT silently deleted — still visible for classification.
     const residue = await sandbox.inspectStaging();
@@ -161,7 +157,7 @@ describe("§6b acceptance — the 12 invariants", () => {
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "bb_pack" });
     const ep = transfer.staging.find((f) => f.path.startsWith("Breaking Bad"))!;
-    await sandbox.moveToSeason({ fileIds: [ep.id], season: 1 });
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: [ep.id] }] });
 
     // El Camino was never auto-moved or auto-marked — it remains in staging for review.
     const residue = await sandbox.inspectStaging();
@@ -182,14 +178,17 @@ describe("§6b acceptance — the 12 invariants", () => {
   });
 
   it("#8 Type-3: 115 already has the file → mark from existing evidence, no search/transfer", async () => {
-    const { sandbox, targetSeasonDirectoryId, storage } = await makeSandbox({
+    const { sandbox } = await makeSandbox({
       results: {},
       packs: {},
       need: episodes(1),
       seedSeason: { files: [{ path: "Show - 01.mkv", sizeBytes: 9 }] },
     });
-    const existing = (await storage.listTree({ directoryId: targetSeasonDirectoryId }))[0]!;
-    await sandbox.markObtained({ episodes: [{ code: "S01E01", fileId: existing.id }] });
+    // The agent inspects 115, sees the file already there, and marks from that
+    // evidence — no search, no transfer (§6b#8).
+    const present = await sandbox.inspectTargetDir({ season: 1 });
+    expect(present).toHaveLength(1);
+    await sandbox.markObtained({ codes: ["S01E01"] });
     expect(sandbox.isCoverageMet()).toBe(true);
   });
 
@@ -209,11 +208,15 @@ describe("§6b acceptance — the 12 invariants", () => {
     ).rejects.toThrow(/SIM_DIR_NOT_FOUND/);
   });
 
-  it("#10 markObtained is refused when the backing file is not present", async () => {
+  it("#10 markObtained records the agent's declared codes — no mechanical present-check", async () => {
+    // 2026-06-15: the system no longer re-reads 115 to verify a backing file (the
+    // mark is reversible, move/flatten already reread, §1.13 re-judges each
+    // patrol). markObtained is the agent's final declaration; ordering (mark LAST,
+    // after flatten) is enforced by the prompt, not a system gate.
     const { sandbox } = await makeSandbox({ results: {}, packs: {}, need: episodes(1) });
-    await expect(
-      sandbox.markObtained({ episodes: [{ code: "S01E01", fileId: "ghost" }] }),
-    ).rejects.toThrow(/FILE_NOT_PRESENT/);
+    const result = await sandbox.markObtained({ codes: ["S01E01"] });
+    expect(result.confirmed).toEqual(["S01E01"]);
+    expect(sandbox.isCoverageMet()).toBe(true);
   });
 
   it("#11 dedup keeps the larger files (Life Tree) when the agent groups duplicates", async () => {
@@ -229,7 +232,7 @@ describe("§6b acceptance — the 12 invariants", () => {
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "new_small" });
     // Move the new pack in: E01-12 collide -> "(1)" duplicates; E13-14 are new.
-    await sandbox.moveToSeason({ fileIds: transfer.staging.map((f) => f.id), season: 1 });
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: transfer.staging.map((f) => f.id) }] });
     const season = await sandbox.inspectTargetDir();
     // Agent groups by episode and keeps the LARGER of each colliding pair (keep-big).
     const collisions = season.filter((f) => /\(1\)/.test(f.path));
@@ -253,18 +256,16 @@ describe("§6b acceptance — the 12 invariants", () => {
     });
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "pack" });
-    const moved = await sandbox.moveToSeason({ fileIds: transfer.staging.filter((f) => f.isVideo).map((f) => f.id), season: 1 });
+    const moved = await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: transfer.staging.filter((f) => f.isVideo).map((f) => f.id) }] });
     // Files are now flat in Season 1 (extracted out of the wrapper).
-    expect(moved.season.every((f) => !f.path.includes("/"))).toBe(true);
-    expect(moved.season.some((f) => /\(1\)/.test(f.path))).toBe(false);
+    expect(moved.seasons[1]!.every((f) => !f.path.includes("/"))).toBe(true);
+    expect(moved.seasons[1]!.some((f) => /\(1\)/.test(f.path))).toBe(false);
     // Peel off the now-residual wrapper dir.
     const wrapper = (await sandbox.inspectStagingDirs())[0]!;
     const flat = await sandbox.flattenPack({ directoryId: wrapper.id });
     expect(flat.staging).toHaveLength(0); // staging clean, no leftover shell
     // One pack sufficed — further transfers refused once marked.
-    await sandbox.markObtained({
-      episodes: moved.season.map((f, i) => ({ code: need[i]!, fileId: f.id })),
-    });
+    await sandbox.markObtained({ codes: need });
     await expect(
       sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "other" }),
     ).rejects.toThrow(/COVERAGE_ALREADY_MET/);

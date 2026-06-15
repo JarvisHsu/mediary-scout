@@ -394,7 +394,9 @@ describe("runScheduledType3Monitoring (V2 engine)", () => {
     const broken = trackedFixture("broken");
     const healthy = trackedFixture("healthy");
     await seedTrackedSeason({ repository, title: broken.title, season: broken.season, obtainedCodes: ["S01E01"] });
-    await seedTrackedSeason({ repository, title: healthy.title, season: healthy.season, obtainedCodes: ["S01E01"] });
+    // Healthy season's DB marks cover all aired (实有 = aired) → a true no-op, the
+    // agent is never invoked. (实有 is the DB marks now, not a 115 scan.)
+    await seedTrackedSeason({ repository, title: healthy.title, season: healthy.season, obtainedCodes: ["S01E01", "S01E02"] });
     const storage = new FakeStorageExecutor();
     await seedV2Season(storage, broken.title, broken.season, []); // gap → agent runs → model dies
     await seedV2Season(storage, healthy.title, healthy.season, ["S01E01", "S01E02"]); // current → no-op

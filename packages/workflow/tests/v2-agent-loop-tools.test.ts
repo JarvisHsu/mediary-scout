@@ -1,3 +1,4 @@
+import type { ToolSet } from "ai";
 import { describe, expect, it } from "vitest";
 import { buildSandboxToolSet } from "../src/acquisition-v2/agent-loop.js";
 import { TaskSandbox } from "../src/acquisition-v2/sandbox.js";
@@ -15,14 +16,14 @@ async function setup(need: string[] = ["S01E01"]) {
   return { sandbox };
 }
 
-async function call(
-  tool: { execute?: (args: unknown, opts: unknown) => PromiseLike<unknown> } | undefined,
-  args: unknown,
-) {
-  if (!tool?.execute) {
+async function call(tool: ToolSet[string] | undefined, args: unknown) {
+  const execute = tool?.execute as
+    | ((args: unknown, opts: unknown) => PromiseLike<unknown>)
+    | undefined;
+  if (!execute) {
     throw new Error("Expected sandbox tool to expose execute()");
   }
-  return tool.execute(args, { toolCallId: "t", messages: [] }) as PromiseLike<Record<string, unknown>>;
+  return execute(args, { toolCallId: "t", messages: [] }) as PromiseLike<Record<string, unknown>>;
 }
 
 describe("buildSandboxToolSet — the agent's tool surface over the cage", () => {
@@ -32,7 +33,9 @@ describe("buildSandboxToolSet — the agent's tool surface over the cage", () =>
     expect(Object.keys(tools).sort()).toEqual(
       [
         "deleteFiles",
+        "discardStaging",
         "finish",
+        "flattenMovie",
         "flattenPack",
         "inspectStaging",
         "inspectStagingDirs",
@@ -75,11 +78,11 @@ describe("buildSandboxToolSet — the agent's tool surface over the cage", () =>
     const { sandbox } = await setup();
     const tools = buildSandboxToolSet(sandbox);
 
-    // markObtained against a file that does not exist must come back as an error
-    // string, not throw out of the tool loop.
-    const result = await call(tools.markObtained, { episodes: [{ code: "S01E01", fileId: "ghost" }] });
+    // A scoped-guard violation (moving a file that is not in this task's staging)
+    // must come back as an error string, not throw out of the tool loop.
+    const result = await call(tools.moveToSeason, { moves: [{ season: 1, fileIds: ["ghost"] }] });
 
-    expect(result.error).toMatch(/FILE_NOT_PRESENT/);
+    expect(result.error).toMatch(/FILES_NOT_IN_STAGING/);
   });
 
   it("finish returns the honest coverage summary through the tool surface", async () => {
@@ -89,9 +92,8 @@ describe("buildSandboxToolSet — the agent's tool surface over the cage", () =>
     const snapshotId = (search.snapshot as { id: string }).id;
     const transfer = await call(tools.transferCandidate, { snapshotId, candidateId: "cand" });
     const staging = transfer.staging as Array<{ id: string }>;
-    const moved = await call(tools.moveToSeason, { fileIds: staging.map((f) => f.id), season: 1 });
-    const season = moved.season as Array<{ id: string }>;
-    await call(tools.markObtained, { episodes: [{ code: "S01E01", fileId: season[0]!.id }] });
+    await call(tools.moveToSeason, { moves: [{ season: 1, fileIds: staging.map((f) => f.id) }] });
+    await call(tools.markObtained, { codes: ["S01E01"] });
 
     const summary = await call(tools.finish, {});
     expect(summary.coverageMet).toBe(false);

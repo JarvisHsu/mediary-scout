@@ -54,8 +54,7 @@ describe("runAcquisitionAgent — the real AI SDK tool-loop over the sandbox", (
     const search = await sandbox.searchResources("lycoris recoil");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "full_pack" });
     const stagingFileId = transfer.staging[0]!.id;
-    const moved = await sandbox.moveToSeason({ fileIds: [stagingFileId], season: 1 });
-    const seasonFileId = moved.season[0]!.id;
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: [stagingFileId] }] });
     // Now a fresh sandbox over the SAME storage state, driven purely by the model.
     const liveSandbox = new TaskSandbox({
       provider: new FakeResourceProviderV2({ results: {} }),
@@ -67,7 +66,7 @@ describe("runAcquisitionAgent — the real AI SDK tool-loop over the sandbox", (
 
     const model = scriptedModel([
       { tool: "inspectTargetDir", input: {} },
-      { tool: "markObtained", input: { episodes: [{ code: "S01E01", fileId: seasonFileId }] } },
+      { tool: "markObtained", input: { codes: ["S01E01"] } },
       { tool: "finish", input: {} },
       { text: "Covered S01E01 from the existing season file." },
     ]);
@@ -86,11 +85,13 @@ describe("runAcquisitionAgent — the real AI SDK tool-loop over the sandbox", (
     expect(result.steps).toBeGreaterThanOrEqual(3);
   });
 
-  it("the cage still bites inside the loop: a bad markObtained comes back as error evidence, not a crash", async () => {
+  it("the cage still bites inside the loop: a refused tool call comes back as error evidence, not a crash", async () => {
     const { sandbox } = await setup(["S01E01"]);
     const model = scriptedModel([
-      { tool: "markObtained", input: { episodes: [{ code: "S01E01", fileId: "ghost" }] } },
-      { text: "I could not find a backing file for S01E01." },
+      // A transfer bound to a snapshot never observed in THIS task is refused by
+      // the cage; the refusal returns as {error} evidence, the loop does not crash.
+      { tool: "transferCandidate", input: { snapshotId: "snap_never_seen", candidateId: "x" } },
+      { text: "That candidate was not from a snapshot I searched; stopping." },
     ]);
 
     const result = await runAcquisitionAgent({

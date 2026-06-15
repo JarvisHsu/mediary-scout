@@ -192,7 +192,6 @@ export async function runNextQueuedWorkflow() {
     storage: getWorkerStorageExecutor(),
     model,
     ...language,
-    stagingParentDirectoryId: moviesParentDirectoryId(),
     moviesParentDirectoryId: moviesParentDirectoryId(),
   });
   if (movie.status !== "idle") {

@@ -45,19 +45,18 @@ describe("TaskSandbox — multi-season distribution", () => {
     const s1file = transfer.staging.find((f) => f.path.includes("Season 1"))!;
     const s2file = transfer.staging.find((f) => f.path.includes("Season 2"))!;
 
-    await sandbox.moveToSeason({ fileIds: [s1file.id], season: 1 });
-    await sandbox.moveToSeason({ fileIds: [s2file.id], season: 2 });
+    await sandbox.moveToSeason({
+      moves: [
+        { season: 1, fileIds: [s1file.id] },
+        { season: 2, fileIds: [s2file.id] },
+      ],
+    });
 
     // Each season dir holds ONLY its own episode (distributed, not dumped together).
     expect((await sandbox.inspectTargetDir({ season: 1 })).map((f) => f.path)).toEqual(["Show - 07.mkv"]);
     expect((await sandbox.inspectTargetDir({ season: 2 })).map((f) => f.path)).toEqual(["Show - 13.mkv"]);
 
-    await sandbox.markObtained({
-      episodes: [
-        { code: "S01E07", fileId: s1file.id },
-        { code: "S02E13", fileId: s2file.id },
-      ],
-    });
+    await sandbox.markObtained({ codes: ["S01E07", "S02E13"] });
     expect(sandbox.isCoverageMet()).toBe(true); // cross-season coverage met
   });
 
@@ -68,7 +67,7 @@ describe("TaskSandbox — multi-season distribution", () => {
     });
     const search = await sandbox.searchResources("show");
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "series" });
-    await expect(sandbox.moveToSeason({ fileIds: [transfer.staging[0]!.id] })).rejects.toThrow(/SEASON_REQUIRED/);
+    await expect(sandbox.moveToSeason({ moves: [{ fileIds: [transfer.staging[0]!.id] }] })).rejects.toThrow(/SEASON_REQUIRED/);
   });
 
   it("extracts only the missing episode from a complete-series pack; covered seasons are not recopied", async () => {
@@ -88,11 +87,11 @@ describe("TaskSandbox — multi-season distribution", () => {
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "series" });
     const wanted = transfer.staging.find((f) => f.path.includes("Season 2"))!;
 
-    await sandbox.moveToSeason({ fileIds: [wanted.id], season: 2 });
+    await sandbox.moveToSeason({ moves: [{ season: 2, fileIds: [wanted.id] }] });
 
     expect((await sandbox.inspectTargetDir({ season: 2 })).map((f) => f.path)).toEqual(["Show - 13.mkv"]);
     expect(await sandbox.inspectTargetDir({ season: 1 })).toHaveLength(0); // S1 NOT recopied
-    await sandbox.markObtained({ episodes: [{ code: "S02E13", fileId: wanted.id }] });
+    await sandbox.markObtained({ codes: ["S02E13"] });
     expect(sandbox.isCoverageMet()).toBe(true);
   });
 });

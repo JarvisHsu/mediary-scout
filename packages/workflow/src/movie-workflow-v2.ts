@@ -34,7 +34,6 @@ export interface RunMovieAcquisitionV2Request {
   storage: StorageExecutor;
   model: LanguageModel;
   workflowRunId: string;
-  stagingParentDirectoryId: string;
   moviesParentDirectoryId: string;
   searchBudget?: number;
   maxSteps?: number;
@@ -47,31 +46,13 @@ export async function runMovieAcquisitionV2(
 ): Promise<MovieWorkflowResult> {
   const now = request.now ?? defaultNowIso;
 
-  // verify-or-create Movies/Title (Year)
+  // verify-or-create Movies/Title (Year). For a movie this dir IS the staging,
+  // the flatten target, and the final location — there is NO separate staging
+  // (§5): transfer lands here, the wrapper is flattened in place, mark. So
+  // stagingDirectoryId === targetMovieDirectoryId === the movie dir.
   const movieDirectoryId = await request.storage.createDirectory({
     name: `${request.title.title} (${request.title.year ?? "—"})`,
     parentId: request.moviesParentDirectoryId,
-  });
-
-  // Already obtained? (a film really present in its dir) → no-op.
-  const before = await request.storage.listVideoFiles(movieDirectoryId);
-  if (before.length > 0) {
-    return buildResult({
-      request,
-      movieDirectoryId,
-      obtained: true,
-      status: "succeeded",
-      kind: "movie_init",
-      snapshots: [],
-      attempts: [],
-      decisions: [],
-      now,
-    });
-  }
-
-  const stagingDirectoryId = await request.storage.createDirectory({
-    name: `staging-${request.workflowRunId}`,
-    parentId: request.stagingParentDirectoryId,
   });
 
   const v2 = await runAcquisitionV2({
@@ -86,23 +67,17 @@ export async function runMovieAcquisitionV2(
       year: request.title.year ?? 0,
       qualityPreference: "4K",
     },
-    stagingDirectoryId,
+    stagingDirectoryId: movieDirectoryId,
     targetMovieDirectoryId: movieDirectoryId,
     ...(request.searchBudget === undefined ? {} : { searchBudget: request.searchBudget }),
     ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),
   });
 
-  // Truth = what really landed in the movie dir.
-  const after = await request.storage.listVideoFiles(movieDirectoryId);
-  const obtained = after.length > 0;
-
-  // Best-effort staging cleanup (never fail acquisition over cleanup).
-  try {
-    await request.storage.removeDirectory(stagingDirectoryId);
-  } catch {
-    // ignore
-  }
+  // Truth = the AGENT'S coverage (its markObtained), NOT a mechanical file scan
+  // (§1.13/§7b). The agent looked at the real files and declared coverage; the
+  // workflow records that, it does not re-derive obtained by counting files.
+  const obtained = v2.coverage.coverageMet;
 
   return buildResult({
     request,

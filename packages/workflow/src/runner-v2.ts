@@ -129,6 +129,8 @@ export async function runType3MonitoringV2AndPersist(
     storage: input.storage,
     model: input.model,
     workflowRunId: input.workflowRun.id,
+    // 实有 = the DB obtained marks; the need is aired − these (NOT a 115 scan).
+    priorObtained: input.episodes.filter((episode) => episode.obtained).map((episode) => episode.episodeCode),
     now: nowFromRun(input.workflowRun),
     ...passthrough(input),
   });
@@ -205,7 +207,6 @@ export async function runSeriesInitializationV2AndPersist(
 export async function runMovieAcquisitionV2AndPersist(input: {
   title: MediaTitle;
   categoryParentId: string;
-  stagingParentDirectoryId: string;
   resourceProvider: ResourceProvider;
   storage: StorageExecutor;
   model: LanguageModel;
@@ -221,7 +222,6 @@ export async function runMovieAcquisitionV2AndPersist(input: {
     storage: input.storage,
     model: input.model,
     workflowRunId: input.workflowRun.id,
-    stagingParentDirectoryId: input.stagingParentDirectoryId,
     moviesParentDirectoryId: input.categoryParentId,
     now: nowFromRun(input.workflowRun),
     ...(input.searchBudget === undefined ? {} : { searchBudget: input.searchBudget }),

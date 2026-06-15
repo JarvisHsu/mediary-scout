@@ -102,19 +102,21 @@ describe("RealStorageV2 — StorageExecutor → StorageV2 adapter", () => {
     );
   });
 
-  it("maps listTree to SimTreeFile with id=providerFileId and extension-based isVideo", async () => {
+  it("maps listTree to SimTreeFile with id=providerFileId and extension-based isVideo/isSubtitle", async () => {
     const executor = new RecordingExecutor({
       tree: [
         { path: "Pack/Show - 01.mkv", providerFileId: "f1", sizeBytes: 9 },
-        { path: "Pack/cover.jpg", providerFileId: "f2", sizeBytes: 1 },
+        { path: "Pack/Show - 01.ass", providerFileId: "f2", sizeBytes: 2 },
+        { path: "Pack/cover.jpg", providerFileId: "f3", sizeBytes: 1 },
       ],
     });
     const { storage } = adapter(executor);
 
     const tree = await storage.listTree({ directoryId: "staging" });
     expect(tree).toEqual([
-      { id: "f1", path: "Pack/Show - 01.mkv", sizeBytes: 9, isVideo: true },
-      { id: "f2", path: "Pack/cover.jpg", sizeBytes: 1, isVideo: false },
+      { id: "f1", path: "Pack/Show - 01.mkv", sizeBytes: 9, isVideo: true, isSubtitle: false },
+      { id: "f2", path: "Pack/Show - 01.ass", sizeBytes: 2, isVideo: false, isSubtitle: true },
+      { id: "f3", path: "Pack/cover.jpg", sizeBytes: 1, isVideo: false, isSubtitle: false },
     ]);
   });
 

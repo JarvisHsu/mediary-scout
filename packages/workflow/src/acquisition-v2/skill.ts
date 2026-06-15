@@ -70,7 +70,7 @@ The season dir already holds E01-E12 at ~1.2GB each (high quality). A new pack l
 
 const MOVIE = `# Movie acquisition playbook
 
-A movie is ONE video file. There are no seasons or episodes; its single coverage token is "MOVIE". The landing directory is just "Title (Year)/" and the file goes DIRECTLY in it — there is NO Season folder for a movie (moveToSeason for a movie omits the season; the file lands in the movie directory).
+A movie is ONE video file. There are no seasons or episodes; its single coverage token is "MOVIE". The landing directory is just "Title (Year)/" and the file goes DIRECTLY in it — there is NO Season folder for a movie (a movie move is one plan with no season: moveToSeason({moves:[{fileIds}]}); the file lands in the movie directory).
 
 ## Identity is the hard part (apply protocol's Evidence → Facts → Decision)
 The candidate must be THIS film — not a remake, sequel, prequel, or same-IP different film. Cross-check BOTH title AND year.
@@ -80,7 +80,7 @@ The candidate must be THIS film — not a remake, sequel, prequel, or same-IP di
 Reject packs / collections / box sets / multi-part / anything structured like seasons — a movie is a single film. Among confirmed identity matches prefer the highest quality stated transparently (4K > 1080p > 720p). Magnets and 115 shares both transfer instantly — judge on identity/quality, never on link type.
 
 ## The collapsed loop
-search (re-keyword if weak) → decide the ONE correct film (Evidence → Facts → Decision) → transferCandidate it → inspectStaging to read the TRUE files → moveToSeason the main film into the movie directory (omit the season) → flattenPack the wrapper so the scraper sees a clean directory → markObtained([{ code: "MOVIE", fileId }]) once it is present → finish(). Reject extras / trailers / a bundled different work as residue (deleteFiles); never auto-map them.
+search (re-keyword if weak) → decide the ONE correct film (Evidence → Facts → Decision) → transferCandidate it → inspectStaging to read the TRUE files → flattenMovie() AUTOMATICALLY pulls the film AND its subtitles up into the movie directory and removes the wrapper (one call, no per-file selection — a movie is one film, take it all; subtitles MUST land beside the video so the scraper finds them) → delete any extras (trailers / 花絮 / a bundled different work) with deleteFiles → markObtained(["MOVIE"]) as the LAST step, once the film is in place → finish().
 
 ## Worked example — 奥本海默 (the live failure to NOT repeat)
 Searching "奥本海默" returns ~5 results, all OPAQUE black-box titles; ~4 are dead links and 1 is a good resource.
@@ -103,13 +103,20 @@ You own one OR MORE seasons in scope. The need is "应有 vs 实有 = which epis
 - If the only resource covering a missing episode is a large pack, use it — never sacrifice coverage to avoid a big pack. (In the daily patrol specifically, when a small exact-missing resource AND a huge full-season pack both cover, prefer the small exact one — less dedup risk; quality can be upgraded later.)
 
 ## Multi-season / complete-series packs
-The need may span several seasons and a SINGLE pack ("Breaking Bad Complete Series" / "全五季") may cover them all. Transfer it ONCE, then DISTRIBUTE its files into EACH season's directory with moveToSeason(fileIds, season). Take ONLY still-missing episodes — a season the library already has is NOT recopied (inspectTargetDir(season) shows what each season already holds; recopying a present season is the 莉可丽丝 mistake across seasons). A pack covering seasons beyond the need is fine — take only what is missing, leave the rest in staging.
+The need may span several seasons and a SINGLE pack ("Breaking Bad Complete Series" / "全五季") may cover them all. Transfer it ONCE, then submit ONE distribution plan that maps the files to EACH season at once: moveToSeason({moves:[{season:1,fileIds:[...]},{season:2,fileIds:[...]}]}) — each video's SUBTITLES ride in the same season's fileIds. Take ONLY still-missing episodes — a season the library already has is NOT recopied (inspectTargetDir(season) shows what each season already holds; recopying a present season is the 莉可丽丝 mistake across seasons). A pack covering seasons beyond the need is fine — take only what is missing, leave the rest in staging.
+
+## Batch distribution (moveToSeason) — plan, ONE call, verify
+The move tool is a BATCH plan, not a per-season call. Use it EXACTLY like this:
+1. PLAN the whole distribution first (Evidence → Facts → Decision): for EACH still-missing episode write down which staging file id is its video, that video's SUBTITLE file id(s), and which season it belongs to. Confirm the plan covers EXACTLY the missing episodes — nothing already present, no extras.
+2. Submit it in ONE call: moveToSeason({moves:[{season:1,fileIds:["videoId","subtitleId",...]},{season:2,fileIds:[...]}]}). Every video's subtitle id sits in the SAME season's fileIds as its video. (A movie omits season entirely.)
+3. VERIFY the returned {seasons, staging}: each returned season must hold exactly its missing episodes (+ their subtitles), flat. If a file is misplaced or missing, call moveToSeason again to fix it — moves are cheap (NOT transfer-budget), so distribute-then-verify; do not agonize over a perfect first call.
+4. Only once the seasons verify correct: dedup (keep-larger) → markObtained(codes) → discardStaging.
 
 ## Coverage honesty
 Only currently-aired, genuinely-missing episodes are obtainable. Unaired future episodes of the latest ongoing season are NOT missing — leave them; the daily patrol gets them when they air. A truly-missing episode with no covering resource is an honest gap — leave it for the next patrol; never fabricate coverage.
 
-## A bundled different work
-A foreign / different work bundled into a pack (e.g. El Camino inside a Breaking Bad pack) is ISOLATED for review — never auto-moved into a season, never auto-mapped to an episode.`;
+## Clean up & subtitles
+Each video's SUBTITLES (.srt / .ass / .ssa / .sub / .idx / .vtt / .sup / .smi; .sub + .idx are a VobSub pair) ride WITH their video in the SAME season's moveToSeason fileIds — they must land beside the video so the scraper finds them; NEVER leave a pack's subtitles behind. After every needed episode (and its subtitles) is moved into its season directory and marked, call discardStaging to wipe the WHOLE staging directory in one shot: leftovers you didn't need — extra episodes, duplicate packs, a bundled different work (e.g. El Camino inside a Breaking Bad pack), covers/nfo — are all discarded wholesale. Keep ONLY what you moved into the seasons; do not isolate or hand-classify residue.`;
 
 const MISTAKES = `# Worked right/wrong examples (the hard-won lessons)
 

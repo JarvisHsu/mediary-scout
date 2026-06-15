@@ -36,11 +36,11 @@ const LOOP_GUIDANCE = `Your loop (you drive it; the system only orchestrates the
 1. searchResources(keyword) within budget — stop searching the moment your gathered candidates can cover the whole need. One fully-covering resource is enough; do not pile on overlapping packs.
 2. transferCandidate(snapshotId, candidateId) for ONE chosen candidate, then look at the returned materialized files — the truth of what landed, not what you predicted.
 3. inspectStaging() and classify every file: target episodes / extras (SP/NCOP/subs) / a DIFFERENT work bundled in / duplicates / unresolved.
-4. moveToSeason(fileIds, season) for ONLY the still-missing target files, passing the season each file belongs to. A multi-season / complete-series pack is distributed by calling this once per season; episodes a season ALREADY has are NOT recopied (check inspectTargetDir(season) first).
-5. flattenPack(directoryId) to delete the now-residual wrapper directory so the scraper sees a clean flat Season — extracted media must NOT stay wrapped in its own resource directory, or scrapers read the nesting as different versions of the same episode. deleteFiles for classified residue.
+4. Plan the FULL distribution FIRST (Evidence → Facts → Decision): for each still-missing episode decide its staging file id, that video's subtitle id(s), and its season — confirm the plan covers EXACTLY the missing episodes. THEN submit it as ONE call: moveToSeason({moves:[{season,fileIds}]}) — each move names its season, each video's subtitles ride in the SAME season's fileIds. A multi-season / complete-series pack is distributed in a single plan with one move per season; episodes a season ALREADY has are NOT recopied (check inspectTargetDir(season) first). THEN verify the returned {seasons,staging} and fix any misplacement with another call (moves are cheap, not transfer-budget).
+5. moveToSeason lands each file FLAT in its Season dir (extracted OUT of its resource wrapper) — media must NOT stay nested in its own wrapper directory, or scrapers read the nesting as different versions of the same episode. The wrappers and anything you didn't move stay in staging and get wiped wholesale in step 8 — you do NOT peel each wrapper.
 6. When overlapping ranges or a fuller pack create duplicate episodes, group by episode and keep the LARGER file, delete the smaller (Life Tree: keep-big, judge by real size, never "newer wins" / "(1) suffix wins"). deleteFiles executes your grouping.
-7. markObtained(episodes) — each episode names its backing fileId; the system rereads and refuses any whose file is not present RIGHT NOW. Only mark what exists.
-8. When the need is covered, finish(). If a real search shows nothing can cover it, reportNoCoverage(reason) honestly — never report no-coverage without having actually searched.
+7. markObtained(codes) — declare the episode codes you obtained (e.g. ["S01E13","S02E07"]). Do it ONLY after you have moved the files in, deduped, and your inspectTargetDir shows the real episodes in place. The system does NOT re-read to second-guess you and there is no fileId — mark from your own judgment, and never mark before the files are actually placed.
+8. discardStaging wipes the WHOLE staging directory in one shot — leftover episodes / duplicate packs / a bundled different work / wrappers / covers are discarded wholesale; keep ONLY what you moved into the seasons (do NOT isolate or hand-classify residue). Then finish() when the need is covered. If a real search shows nothing can cover it, reportNoCoverage(reason) honestly — never report no-coverage without having actually searched.
 
 Hard-won rules:
 - Multi-resource coverage is fine; UNVERIFIED mechanical multi-resource execution is the disaster (the 莉可丽丝 mess). After each transfer, re-read what actually landed and what is still missing before deciding whether you even need another resource — a pack you thought covered 1-8 may have covered 1-13, in which case STOP.
@@ -71,7 +71,7 @@ Target matching:
 
 Coverage: cover every missing episode with the FEWEST reliable transfers. Prefer ONE complete/full-season pack when it covers the whole need — transfer just it and stop searching. Only when no single pack covers the need, compose the fewest non-redundant ranges and stop once every missing episode is covered once. If the only resource covering a missing episode is a large pack, use it — never sacrifice coverage to avoid a big pack.
 
-Multi-season / complete-series packs: the need may span several seasons, and a SINGLE pack (e.g. "Breaking Bad Complete Series" / "全五季") may cover them all. Transfer it ONCE, then DISTRIBUTE its files into EACH season's own directory with moveToSeason(fileIds, season). Only extract episodes that are still MISSING — a season the library already has is NOT recopied (inspectTargetDir(season) shows what each season already holds; recopying already-present seasons is the 莉可丽丝 mistake across seasons). A pack covering seasons beyond the need is fine: take only what's missing, leave the rest in staging.
+Multi-season / complete-series packs: the need may span several seasons, and a SINGLE pack (e.g. "Breaking Bad Complete Series" / "全五季") may cover them all. Transfer it ONCE, then submit ONE distribution plan mapping the files to EACH season at once: moveToSeason({moves:[{season:1,fileIds:[...]},{season:2,fileIds:[...]}]}) — each video's subtitles ride in the same season's fileIds. Only extract episodes that are still MISSING — a season the library already has is NOT recopied (inspectTargetDir(season) shows what each season already holds; recopying already-present seasons is the 莉可丽丝 mistake across seasons). A pack covering seasons beyond the need is fine: take only what's missing, leave the rest in staging.
 
 Coverage honesty: only currently-aired, genuinely-missing episodes are obtainable. Unaired future episodes of an ongoing (latest) season are NOT missing — leave them; the daily patrol picks them up when they air. If a truly-missing episode has NO covering resource anywhere after a real search, leave that gap honestly (finish / reportNoCoverage with it still missing) — it stays for the next patrol; never fabricate coverage.
 
@@ -96,7 +96,7 @@ ${languageLine(options)}
 
 ${LOOP_GUIDANCE}
 
-For a movie the loop collapses: search → transfer the one chosen film → inspect staging → move the main file into the movie directory → flatten the wrapper → markObtained([{ code: "MOVIE", fileId }]) once the file is present → finish(). Reject extras/trailers/bundled other works as residue; never auto-map them.`;
+For a movie the loop collapses: search → transfer the one chosen film → inspect staging to verify it IS the film → flattenMovie() AUTOMATICALLY pulls the film AND its subtitles up into the movie directory and removes the wrapper (one call, no per-file selection — a movie is one film, take it all; subtitles land beside the video) → deleteFiles any extras (trailers / 花絮 / a bundled other work) → markObtained(["MOVIE"]) as the LAST step, once the film is in place → finish().`;
 }
 
 /** Coverage tokens for a TV/anime task — exactly the missing episode codes. */
@@ -147,7 +147,7 @@ export async function runTvAnimeTaskAgent(request: RunTvAnimeRequest): Promise<A
   const prompt = `Acquire the missing episodes for "${target.title}"${target.aliases.length ? ` (aliases: ${target.aliases.join(", ")})` : ""}, ${seasonsLabel}.
 Missing episodes (the coverage need — may span multiple seasons): ${target.missingEpisodes.join(", ")}.
 Quality preference: ${target.qualityPreference}.
-If one pack covers multiple seasons, distribute its files into each season's directory (moveToSeason with the season) and take only still-missing episodes — never recopy a season already present. Cover every missing episode with the fewest reliable transfers, keep each season directory clean, mark what truly landed, then finish.`;
+If one pack covers multiple seasons, distribute its files in ONE plan with a move per season (moveToSeason({moves:[{season,fileIds}]})) and take only still-missing episodes — never recopy a season already present. Cover every missing episode with the fewest reliable transfers, keep each season directory clean, mark what truly landed, then finish.`;
   return runAcquisitionAgent({
     sandbox,
     model,

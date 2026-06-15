@@ -28,6 +28,10 @@ export interface RunAcquisitionV2WorkflowRequest {
   categoryParentId: string;
   seasons: V2WorkflowSeason[];
   qualityPreference: string;
+  /** 实有 = the DB obtained marks for this title (the agent's prior markObtained).
+   *  Empty for a first acquisition; the type-3 patrol passes the DB's obtained
+   *  episode codes so the need = aired − 实有 (NOT a 115 scan). */
+  priorObtained?: string[];
   searchBudget?: number;
   maxSteps?: number;
   preferredLanguage?: string;
@@ -59,14 +63,14 @@ export async function runAcquisitionV2Workflow(
     seasons: request.seasons.map((season) => season.seasonNumber),
     workflowRunId: request.workflowRunId,
   });
-  const syncSeasons = request.seasons.map((season) => ({
+  const seasonsForSync = request.seasons.map((season) => ({
     seasonNumber: season.seasonNumber,
     latestAiredEpisode: season.latestAiredEpisode,
-    directoryId: directories.seasonDirectoryIds[season.seasonNumber]!,
   }));
+  const priorObtained = request.priorObtained ?? [];
 
-  // 7b — sync the need from real storage.
-  const before = await syncSeasonNeed({ executor: request.executor, seasons: syncSeasons });
+  // 7b — sync the need from the DB marks (应有 − 实有). No 115 scan, no parser.
+  const before = syncSeasonNeed({ seasons: seasonsForSync, obtained: priorObtained });
   if (before.missing.length === 0) {
     // Already current — no agent run, no side effects (the type-3 no-op path).
     return {
@@ -101,8 +105,12 @@ export async function runAcquisitionV2Workflow(
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),
   });
 
-  // Reconcile: the truth is what really landed, re-read from storage.
-  const after = await syncSeasonNeed({ executor: request.executor, seasons: syncSeasons });
+  // Reconcile from the AGENT'S coverage (its markObtained), NOT a 115 re-scan:
+  // 实有 after = prior DB marks ∪ what the agent marked this run (§1.13/§7b).
+  const after = syncSeasonNeed({
+    seasons: seasonsForSync,
+    obtained: [...priorObtained, ...v2.coverage.obtained],
+  });
   return {
     directories,
     missingBefore: before.missing,

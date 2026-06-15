@@ -37,11 +37,28 @@ function noCoverageModel() {
   });
 }
 
-/** Throws on any call — proves a no-op series run never invokes the agent. */
-function throwingModel() {
+/** The seasons are already in 115 (seeded): the agent inspects, sees the files,
+ *  and marks them from that evidence (§6b#8) — there is no mechanical no-op. */
+function inspectAndMarkModel(codes: string[]) {
+  const steps = [
+    { tool: "inspectTargetDir", input: {} },
+    { tool: "markObtained", input: { codes } },
+    { tool: "finish", input: {} },
+  ];
+  let i = 0;
   return new MockLanguageModelV3({
     doGenerate: async () => {
-      throw new Error("model should not run when every season is already complete");
+      if (i < steps.length) {
+        const s = steps[i]!;
+        i += 1;
+        return {
+          content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: s.tool, input: JSON.stringify(s.input) }],
+          finishReason: { unified: "tool-calls" as const, raw: "tool-calls" as const },
+          usage: USAGE,
+          warnings: [],
+        };
+      }
+      return { content: [{ type: "text" as const, text: "已在库" }], finishReason: { unified: "stop" as const, raw: "stop" as const }, usage: USAGE, warnings: [] };
     },
   });
 }
@@ -394,8 +411,8 @@ describe("queueSeriesInitialization + runQueuedSeriesInitialization", () => {
     expect(again.status).toBe("already_running");
 
     // Seed both seasons' canonical V2 dirs as already complete (all aired
-    // episodes present) so the run is a succeeded no-op and the agent is never
-    // invoked. S1: 2/2 aired; S2: 2/3 aired.
+    // episodes present in 115). The agent inspects, sees them, and marks them
+    // from that evidence (§6b#8) — succeeded. S1: 2/2 aired; S2: 2/3 aired.
     const storage = new FakeStorageExecutor();
     await seedV2SeasonDir(storage, theBoys, 1, "library_root", ["S01E01", "S01E02"]);
     await seedV2SeasonDir(storage, theBoys, 2, "library_root", ["S02E01", "S02E02"]);
@@ -403,7 +420,7 @@ describe("queueSeriesInitialization + runQueuedSeriesInitialization", () => {
       repository,
       resourceProvider: new FakeResourceProvider({ keywordResults: {} }),
       storage,
-      model: throwingModel(),
+      model: inspectAndMarkModel(["S01E01", "S01E02", "S02E01", "S02E02"]),
       storageParentDirectoryId: "library_root",
       now: () => "2026-06-13T00:05:00.000Z",
     });

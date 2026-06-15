@@ -37,7 +37,7 @@ describe("§6b multi-season acceptance", () => {
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand" });
     // Season 2 is out of scope — moving into it is refused (never grab seasons the user didn't pick).
     await expect(
-      sandbox.moveToSeason({ fileIds: [transfer.staging[0]!.id], season: 2 }),
+      sandbox.moveToSeason({ moves: [{ season: 2, fileIds: [transfer.staging[0]!.id] }] }),
     ).rejects.toThrow(/NO_SEASON_DIR/);
   });
 
@@ -60,9 +60,13 @@ describe("§6b multi-season acceptance", () => {
     const t = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "complete" });
     const s1 = t.staging.find((f) => f.path.includes("Season 1"))!;
     const s2 = t.staging.find((f) => f.path.includes("Season 2"))!;
-    await sandbox.moveToSeason({ fileIds: [s1.id], season: 1 });
-    await sandbox.moveToSeason({ fileIds: [s2.id], season: 2 });
-    await sandbox.markObtained({ episodes: [{ code: "S01E01", fileId: s1.id }, { code: "S02E01", fileId: s2.id }] });
+    await sandbox.moveToSeason({
+      moves: [
+        { season: 1, fileIds: [s1.id] },
+        { season: 2, fileIds: [s2.id] },
+      ],
+    });
+    await sandbox.markObtained({ codes: ["S01E01", "S02E01"] });
 
     await expect(
       sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "extra" }),
@@ -78,8 +82,8 @@ describe("§6b multi-season acceptance", () => {
     });
     const search = await sandbox.searchResources("show");
     const t = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "s1only" });
-    await sandbox.moveToSeason({ fileIds: [t.staging[0]!.id], season: 1 });
-    await sandbox.markObtained({ episodes: [{ code: "S01E01", fileId: t.staging[0]!.id }] });
+    await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: [t.staging[0]!.id] }] });
+    await sandbox.markObtained({ codes: ["S01E01"] });
 
     const summary = await sandbox.finish();
     expect(summary.coverageMet).toBe(false);

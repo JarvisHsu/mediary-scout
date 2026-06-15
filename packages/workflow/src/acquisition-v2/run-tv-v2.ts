@@ -30,6 +30,9 @@ export interface RunTvAcquisitionV2Request {
   storage: StorageExecutor;
   model: LanguageModel;
   workflowRunId: string;
+  /** 实有 = the DB obtained marks (agent's prior markObtained); empty for a first
+   *  acquisition, the type-3 patrol passes the DB obtained codes. */
+  priorObtained?: string[];
   searchBudget?: number;
   maxSteps?: number;
   preferredLanguage?: string;
@@ -56,6 +59,7 @@ export async function runTvAcquisitionV2(request: RunTvAcquisitionV2Request): Pr
       latestAiredEpisode: season.latestAiredEpisode,
     })),
     qualityPreference: request.seasons[0]!.qualityPreference,
+    ...(request.priorObtained === undefined ? {} : { priorObtained: request.priorObtained }),
     ...(request.searchBudget === undefined ? {} : { searchBudget: request.searchBudget }),
     ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),

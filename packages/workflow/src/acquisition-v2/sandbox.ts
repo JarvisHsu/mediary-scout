@@ -207,40 +207,54 @@ export class TaskSandbox {
     return { attempt, staging };
   }
 
-  /** Move the agent-selected files out of staging into the scoped Season dir for
-   *  the given season (the 挖取/extract). A multi-season / complete-series pack is
-   *  distributed by calling this once per season with that season's files — the
-   *  agent judges which file is which season/episode and only moves what's still
-   *  missing (already-present seasons are NOT recopied). `season` is required when
-   *  the task spans multiple seasons; a single-season/movie task may omit it.
-   *  Scope guard: every file must currently be in THIS task's staging. Rereads. */
+  /** Batch distribution plan (挖取/extract): the agent submits the WHOLE
+   *  "files → season" mapping at once — each video's SUBTITLES ride in the same
+   *  season's fileIds (§1.14). The system runs every move and force-rereads,
+   *  returning EVERY touched season dir + the remaining staging so the agent
+   *  verifies the whole distribution in one shot and fixes any misplacement. Only
+   *  still-missing episodes are moved (already-present seasons are NOT recopied —
+   *  the agent judges this). A movie move OMITS `season` (its target is the movie
+   *  dir, which equals staging). Distributing in one call is more ergonomic than
+   *  per-season calls, and moves are NOT 逆鳞-budget-sensitive like transfers
+   *  (§2/§5). Scope guard: every fileId must currently be in THIS task's staging. */
   async moveToSeason(input: {
-    fileIds: string[];
-    season?: number;
-  }): Promise<{ season: SimTreeFile[]; staging: SimTreeFile[] }> {
+    moves: Array<{ season?: number; fileIds: string[] }>;
+  }): Promise<{ seasons: Record<number, SimTreeFile[]>; staging: SimTreeFile[] }> {
     if (!this.storage || !this.stagingDirectoryId) {
       throw new Error("SANDBOX: no storage/staging handle configured");
     }
-    const targetDir = this.resolveTargetDir(input.season);
-    if (!targetDir) {
-      throw new Error(
-        input.season === undefined
-          ? "SANDBOX_SEASON_REQUIRED: every TV move must name its season (single-season included — the season number must stay known)"
-          : `SANDBOX_NO_SEASON_DIR: no scoped directory for season ${input.season} (out of this task's season scope)`,
-      );
-    }
+    // Resolve every target up front; reject an unknown/unscoped season before any move.
+    const resolved = input.moves.map((move) => {
+      const targetDir = this.resolveTargetDir(move.season);
+      if (!targetDir) {
+        throw new Error(
+          move.season === undefined
+            ? "SANDBOX_SEASON_REQUIRED: every TV move must name its season (single-season included — the season number must stay known)"
+            : `SANDBOX_NO_SEASON_DIR: no scoped directory for season ${move.season} (out of this task's season scope)`,
+        );
+      }
+      return { season: move.season, targetDir, fileIds: move.fileIds };
+    });
+    // Validate ALL fileIds against the current staging snapshot before any move.
     const stagingIds = new Set(
       (await this.storage.listTree({ directoryId: this.stagingDirectoryId })).map((file) => file.id),
     );
-    const outOfScope = input.fileIds.filter((fileId) => !stagingIds.has(fileId));
+    const outOfScope = resolved.flatMap((move) => move.fileIds).filter((fileId) => !stagingIds.has(fileId));
     if (outOfScope.length > 0) {
       throw new Error(`SANDBOX_FILES_NOT_IN_STAGING: ${outOfScope.join(",")}`);
     }
-    await this.storage.moveFiles({ fileIds: input.fileIds, targetDirectoryId: targetDir });
-    return {
-      season: await this.storage.listTree({ directoryId: targetDir }),
-      staging: await this.storage.listTree({ directoryId: this.stagingDirectoryId }),
-    };
+    // Execute each move (the system does the per-file moves under the hood).
+    for (const move of resolved) {
+      await this.storage.moveFiles({ fileIds: move.fileIds, targetDirectoryId: move.targetDir });
+    }
+    // Force-reread every touched target season + staging for one-shot verification.
+    const seasons: Record<number, SimTreeFile[]> = {};
+    for (const move of resolved) {
+      if (move.season !== undefined) {
+        seasons[move.season] = await this.storage.listTree({ directoryId: move.targetDir });
+      }
+    }
+    return { seasons, staging: await this.storage.listTree({ directoryId: this.stagingDirectoryId }) };
   }
 
   /** Delete agent-chosen files from a named scoped directory (the dedup
@@ -270,34 +284,19 @@ export class TaskSandbox {
     return { deleted, directory: await this.storage.listTree({ directoryId }) };
   }
 
-  /** Mark episodes obtained — but ONLY after a fresh reread confirms each
-   *  episode's backing file is in the season dir RIGHT NOW (§12). The DB must
-   *  never claim an episode the storage can't back. No persistent fileId↔episode
-   *  mapping: the agent asserts the pairing, the sandbox verifies it live. */
-  async markObtained(input: {
-    episodes: Array<{ code: string; fileId: string }>;
-  }): Promise<{ confirmed: Array<{ code: string; fileId: string }> }> {
-    if (!this.storage) {
-      throw new Error("SANDBOX: no storage configured");
+  /** Record the episodes the agent declares obtained — the agent's FINAL action,
+   *  pure agent judgment. The system does NOT mechanically re-read 115 to verify
+   *  a backing file exists (§12, 2026-06-15): move/flatten already force-reread
+   *  and handed the truth back; the mark is reversible; and §1.13 has the agent
+   *  re-judge from the real files every patrol, so a stale mark self-heals next
+   *  round. Correctness is the prompt ordering (clean/flatten, THEN mark last),
+   *  not a system gate that costs extra 115 reads. No fileId↔episode map (§1.13):
+   *  the code IS the unit; the agent names what it judged present. */
+  async markObtained(input: { codes: string[] }): Promise<{ confirmed: string[] }> {
+    for (const code of input.codes) {
+      this.obtainedCodes.add(code);
     }
-    // Presence is checked across EVERY target directory (all seasons + movie), so a
-    // multi-season task can mark episodes that the agent moved into their own season
-    // dirs. The episode code carries the season; the file must exist somewhere in
-    // the task's target scope right now (§12 fresh-reread, no DB lying).
-    const trees = await Promise.all(
-      this.allTargetDirIds().map((directoryId) => this.storage!.listTree({ directoryId })),
-    );
-    const present = new Set(trees.flat().map((file) => file.id));
-    const missing = input.episodes.filter((episode) => !present.has(episode.fileId));
-    if (missing.length > 0) {
-      throw new Error(
-        `SANDBOX_MARK_FILE_NOT_PRESENT: ${missing.map((e) => `${e.code}->${e.fileId}`).join(",")}`,
-      );
-    }
-    for (const episode of input.episodes) {
-      this.obtainedCodes.add(episode.code);
-    }
-    return { confirmed: input.episodes };
+    return { confirmed: input.codes };
   }
 
   /** Peel off a wrapper resource directory after its target files were extracted
@@ -317,6 +316,47 @@ export class TaskSandbox {
     }
     const { removed } = await this.storage.removeDirectory({ directoryId: input.directoryId });
     return { removed, staging: await this.storage.listTree({ directoryId: this.stagingDirectoryId }) };
+  }
+
+  /** TV/anime clean-up: wipe THIS task's staging dir wholesale after the agent has
+   *  distributed the episodes it needs (mark already done). Leftovers (unwanted
+   *  episodes / dup packs) are discarded — no classification, no foreign-work
+   *  isolation (§1.6). Harnessed: the agent can ONLY delete its own staging, and
+   *  NEVER when staging is also a target dir (the movie flatten-in-place case,
+   *  where staging === the movie dir — refused so the film is never nuked). */
+  async discardStaging(): Promise<{ removed: string[] }> {
+    if (!this.storage || !this.stagingDirectoryId) {
+      throw new Error("SANDBOX: no storage/staging handle configured");
+    }
+    if (this.allTargetDirIds().includes(this.stagingDirectoryId)) {
+      throw new Error(
+        "SANDBOX_STAGING_IS_TARGET: this task has no separate staging to discard (a movie flattens in place)",
+      );
+    }
+    return this.storage.removeDirectory({ directoryId: this.stagingDirectoryId });
+  }
+
+  /** Movie-only automatic flatten: the film landed nested inside its resource
+   *  wrapper under the movie dir (staging === movie dir). Move EVERY video AND
+   *  subtitle file up to the movie dir root (§1.14 — subtitles ride along), then
+   *  remove the now-residual wrapper subdirs (non-media like covers/nfo go with
+   *  them). Fully automatic — no per-file selection (a movie is one film, take it
+   *  all); the agent removes any extras (花絮) afterward with deleteFiles. */
+  async flattenMovie(): Promise<{ movie: SimTreeFile[] }> {
+    if (!this.storage || this.movieDir === undefined) {
+      throw new Error("SANDBOX_NOT_A_MOVIE: flattenMovie is movie-only");
+    }
+    const root = this.movieDir;
+    const nested = (await this.storage.listTree({ directoryId: root })).filter(
+      (file) => (file.isVideo || file.isSubtitle) && file.path.includes("/"),
+    );
+    if (nested.length > 0) {
+      await this.storage.moveFiles({ fileIds: nested.map((file) => file.id), targetDirectoryId: root });
+    }
+    for (const wrapper of await this.storage.listSubdirectories({ directoryId: root })) {
+      await this.storage.removeDirectory({ directoryId: wrapper.id });
+    }
+    return { movie: await this.storage.listTree({ directoryId: root }) };
   }
 
   /** The agent declares it is done. Returns the honest coverage picture from the

@@ -10,6 +10,7 @@ import type { SimTreeFile, StorageV2, TransferAttemptResult } from "./storage-11
  * own write-scope / protected-dir / risk-control guards stay in force underneath.
  */
 const VIDEO_EXTENSIONS = /\.(mkv|mp4|avi|ts|m2ts|mov|flv|wmv)$/i;
+const SUBTITLE_EXTENSIONS = /\.(srt|ass|ssa|sub|idx|vtt|sup|smi)$/i;
 
 export interface RealStorageV2Options {
   executor: StorageExecutor;
@@ -70,6 +71,7 @@ export class RealStorageV2 implements StorageV2 {
       path: file.path,
       sizeBytes: file.sizeBytes,
       isVideo: VIDEO_EXTENSIONS.test(file.path),
+      isSubtitle: SUBTITLE_EXTENSIONS.test(file.path),
     }));
   }
 

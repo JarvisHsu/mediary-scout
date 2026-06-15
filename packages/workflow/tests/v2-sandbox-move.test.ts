@@ -23,16 +23,16 @@ describe("TaskSandbox — moveToSeason (agent-driven extract, scoped, reread)", 
     const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand_full" });
     const videoIds = transfer.staging.filter((file) => file.isVideo).map((file) => file.id);
 
-    const result = await sandbox.moveToSeason({ fileIds: videoIds, season: 1 });
+    const result = await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: videoIds }] });
 
     // The episodes are now directly in Season 1 (extracted out of the pack dir);
     // staging no longer holds them.
-    expect(result.season.filter((file) => file.isVideo)).toHaveLength(3);
+    expect(result.seasons[1]!.filter((file) => file.isVideo)).toHaveLength(3);
     expect(result.staging.filter((file) => file.isVideo)).toHaveLength(0);
   });
 
   it("refuses moving a file that is not in this task's staging (scope guard)", async () => {
     const { sandbox } = await setup();
-    await expect(sandbox.moveToSeason({ fileIds: ["not_in_staging"], season: 1 })).rejects.toThrow(/staging/i);
+    await expect(sandbox.moveToSeason({ moves: [{ season: 1, fileIds: ["not_in_staging"] }] })).rejects.toThrow(/staging/i);
   });
 });

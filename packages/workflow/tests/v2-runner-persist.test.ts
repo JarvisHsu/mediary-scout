@@ -156,7 +156,6 @@ describe("runner-v2 persist wrappers — V2 engine results persisted in the exis
     const result = await runMovieAcquisitionV2AndPersist({
       title: movieTitle,
       categoryParentId: "movies_root",
-      stagingParentDirectoryId: "movies_root",
       resourceProvider: emptyProvider(),
       storage: new FakeStorageExecutor(),
       model: searchThenReportModel(),

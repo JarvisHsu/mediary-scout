@@ -368,7 +368,6 @@ async function patrolMovie(args: {
     const result = await runMovieAcquisitionV2AndPersist({
       title: state.title,
       categoryParentId: moviesParent,
-      stagingParentDirectoryId: moviesParent,
       resourceProvider: input.resourceProvider,
       storage: input.storage,
       model: input.model,
@@ -438,7 +437,6 @@ export async function runQueuedMovieAcquisition(input: {
   storage: StorageExecutor;
   model: LanguageModel;
   preferredLanguage?: string;
-  stagingParentDirectoryId: string;
   moviesParentDirectoryId: string;
   now?: () => string;
 }): Promise<QueuedType2WorkerResult> {
@@ -452,7 +450,6 @@ export async function runQueuedMovieAcquisition(input: {
     const result = await runMovieAcquisitionV2AndPersist({
       title: claimed.title,
       categoryParentId: input.moviesParentDirectoryId,
-      stagingParentDirectoryId: input.stagingParentDirectoryId,
       resourceProvider: input.resourceProvider,
       storage: input.storage,
       model: input.model,

@@ -15,6 +15,9 @@ export interface SimTreeFile {
   path: string;
   sizeBytes: number;
   isVideo: boolean;
+  /** Extension hint: an external subtitle (§1.14) — kept with its video, never
+   *  deleted as residue. (.sub/.idx are the VobSub pair.) */
+  isSubtitle: boolean;
 }
 
 export interface TransferAttemptResult {
@@ -42,6 +45,7 @@ interface File {
 }
 
 const VIDEO_EXTENSIONS = /\.(mkv|mp4|avi|ts|m2ts|mov|flv|wmv)$/i;
+const SUBTITLE_EXTENSIONS = /\.(srt|ass|ssa|sub|idx|vtt|sup|smi)$/i;
 
 /** The storage surface the sandbox depends on — the simulator and the real 115
  *  executor both satisfy it. */
@@ -139,6 +143,7 @@ export class Storage115Simulator implements StorageV2 {
             path: `${prefix}${file.name}`,
             sizeBytes: file.sizeBytes,
             isVideo: VIDEO_EXTENSIONS.test(file.name),
+            isSubtitle: SUBTITLE_EXTENSIONS.test(file.name),
           });
         }
       }

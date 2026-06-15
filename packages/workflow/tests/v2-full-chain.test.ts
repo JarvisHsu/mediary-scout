@@ -37,7 +37,7 @@ function noCoverageModel() {
   let i = 0;
   const tool = (name: string, input: unknown) => ({
     content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: name, input: JSON.stringify(input) }],
-    finishReason: { unified: "tool-calls", raw: "tool-calls" },
+    finishReason: { unified: "tool-calls" as const, raw: "tool-calls" as const },
     usage: USAGE,
     warnings: [],
   });
@@ -48,7 +48,7 @@ function noCoverageModel() {
       if (i === 2) return tool("reportNoCoverage", { reason: "no candidates" });
       return {
         content: [{ type: "text" as const, text: "done" }],
-        finishReason: { unified: "stop", raw: "stop" },
+        finishReason: { unified: "stop" as const, raw: "stop" as const },
         usage: USAGE,
         warnings: [],
       };
@@ -56,11 +56,29 @@ function noCoverageModel() {
   });
 }
 
-/** Throws on any call — proves an already-present (no-op) run never invokes the agent. */
-function throwingModel() {
+/** The film is already in 115 (seeded): the agent inspects, sees it, and marks
+ *  MOVIE from that evidence — no search, no transfer (§6b#8). Obtained is the
+ *  agent's coverage; there is no mechanical file-count no-op. */
+function inspectAndMarkMovieModel() {
+  const steps = [
+    { tool: "inspectTargetDir", input: {} },
+    { tool: "markObtained", input: { codes: ["MOVIE"] } },
+    { tool: "finish", input: {} },
+  ];
+  let i = 0;
   return new MockLanguageModelV3({
     doGenerate: async () => {
-      throw new Error("model should not run when the title is already present");
+      if (i < steps.length) {
+        const s = steps[i]!;
+        i += 1;
+        return {
+          content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: s.tool, input: JSON.stringify(s.input) }],
+          finishReason: { unified: "tool-calls" as const, raw: "tool-calls" as const },
+          usage: USAGE,
+          warnings: [],
+        };
+      }
+      return { content: [{ type: "text" as const, text: "已在库" }], finishReason: { unified: "stop" as const, raw: "stop" as const }, usage: USAGE, warnings: [] };
     },
   });
 }
@@ -106,14 +124,13 @@ describe("full chain: enqueue → worker drains → terminal → 获取中 relea
     // The UI derives "获取中" from the active list — it must show the run now.
     expect(await repository.listActiveWorkflowRuns()).toHaveLength(1);
 
-    await seedMovieAlreadyPresent(storage); // already present → succeeded no-op
+    await seedMovieAlreadyPresent(storage); // already in 115 → agent marks from evidence
 
     const result = await runQueuedMovieAcquisition({
       repository,
       resourceProvider: emptyProvider(),
       storage,
-      model: throwingModel(),
-      stagingParentDirectoryId: "movies_root",
+      model: inspectAndMarkMovieModel(),
       moviesParentDirectoryId: "movies_root",
       now,
     });
@@ -147,8 +164,7 @@ describe("full chain: enqueue → worker drains → terminal → 获取中 relea
       repository,
       resourceProvider: emptyProvider(),
       storage,
-      model: throwingModel(),
-      stagingParentDirectoryId: "movies_root",
+      model: inspectAndMarkMovieModel(),
       moviesParentDirectoryId: "movies_root",
       now,
     });

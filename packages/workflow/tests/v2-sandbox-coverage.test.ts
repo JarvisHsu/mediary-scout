@@ -30,8 +30,8 @@ async function setupNeedingOneEpisode(need: string[]) {
 async function coverOneEpisode(sandbox: TaskSandbox) {
   const search = await sandbox.searchResources("show");
   const transfer = await sandbox.transferCandidate({ snapshotId: search.snapshot!.id, candidateId: "cand1" });
-  const moved = await sandbox.moveToSeason({ fileIds: transfer.staging.map((f) => f.id), season: 1 });
-  await sandbox.markObtained({ episodes: [{ code: "S01E01", fileId: moved.season[0]!.id }] });
+  await sandbox.moveToSeason({ moves: [{ season: 1, fileIds: transfer.staging.map((f) => f.id) }] });
+  await sandbox.markObtained({ codes: ["S01E01"] });
   return search;
 }
 

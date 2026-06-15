@@ -53,6 +53,14 @@ describe("acquisition skill — localized, sectioned, on-demand manual", () => {
     expect(protocol.toLowerCase()).toMatch(/batch|back-to-back|covering set|without searching/);
   });
 
+  it("the tv section teaches the EXACT batch distribution usage: plan the full distribution → ONE call → verify the returned seasons", () => {
+    const tv = readSkillSection("tv");
+    expect(tv).toMatch(/\{moves:\s*\[\{season/); // the exact tool shape
+    expect(tv.toLowerCase()).toMatch(/plan the (whole|full) distribution/); // plan first
+    expect(tv.toLowerCase()).toMatch(/verify.*(returned|season)/); // verify the returned seasons after the batch
+    expect(tv.toLowerCase()).toMatch(/subtitle/); // each video's subtitle rides in the same season's fileIds
+  });
+
   it("gives each agent an index pointing at exactly its responsibility sections", () => {
     const movieIndex = skillIndexForAgent("movie");
     expect(movieIndex).toMatch(/movie/);

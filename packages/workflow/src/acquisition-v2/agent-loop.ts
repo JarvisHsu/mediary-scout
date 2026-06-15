@@ -90,9 +90,12 @@ export function buildSandboxToolSet(sandbox: TaskSandbox): ToolSet {
     },
     moveToSeason: {
       description:
-        "Move the files you selected out of staging into a season's directory (the extract). For a multi-season / complete-series pack, call this ONCE PER SEASON with `season` set and only that season's files — distribute, don't dump together. Only move episodes that are still MISSING; do NOT recopy a season the library already has. `season` is required when the task spans multiple seasons. Every file must currently be in this task's staging. Rereads.",
-      inputSchema: z.object({ fileIds: z.array(z.string()), season: z.number().int().positive().optional() }),
-      execute: (args: { fileIds: string[]; season?: number }) => asEvidence(() => sandbox.moveToSeason(args)),
+        "Submit your WHOLE distribution plan in ONE call: `{moves:[{season,fileIds},...]}` — which files go into which season's directory. Each video's SUBTITLES go in the SAME season's fileIds (never leave subtitles behind — they must land beside their video). Move ONLY still-missing episodes; never recopy a season the library already has. A movie move OMITS `season` (the file lands in the movie directory). Returns every touched season dir + the remaining staging so you verify the whole distribution at once and fix any misplacement with another call. Every fileId must currently be in staging.",
+      inputSchema: z.object({
+        moves: z.array(z.object({ season: z.number().int().positive().optional(), fileIds: z.array(z.string()) })),
+      }),
+      execute: (args: { moves: Array<{ season?: number; fileIds: string[] }> }) =>
+        asEvidence(() => sandbox.moveToSeason(args)),
     },
     deleteFiles: {
       description:
@@ -111,12 +114,23 @@ export function buildSandboxToolSet(sandbox: TaskSandbox): ToolSet {
       inputSchema: z.object({ directoryId: z.string() }),
       execute: (args: { directoryId: string }) => asEvidence(() => sandbox.flattenPack(args)),
     },
+    flattenMovie: {
+      description:
+        'Movie only — AUTOMATIC: pull every video AND subtitle file out of the resource wrapper(s) up into the movie directory and remove the wrappers, in one call (no file selection — a movie is one film, take it all, subtitles included). Then delete any extras (trailers/花絮) with deleteFiles and markObtained(["MOVIE"]).',
+      inputSchema: z.object({}),
+      execute: () => asEvidence(() => sandbox.flattenMovie()),
+    },
+    discardStaging: {
+      description:
+        "TV/anime clean-up, your final step: after every needed episode (with its subtitles) is moved into its season directory and marked, wipe the WHOLE staging directory — leftovers you didn't need are discarded. You may only delete your own staging (never a season/show/root dir).",
+      inputSchema: z.object({}),
+      execute: () => asEvidence(() => sandbox.discardStaging()),
+    },
     markObtained: {
       description:
-        "Mark episodes obtained. Each must name the backing file (code + fileId); the system rereads the Season dir and refuses any whose file is not present right now.",
-      inputSchema: z.object({ episodes: z.array(z.object({ code: z.string(), fileId: z.string() })) }),
-      execute: (args: { episodes: Array<{ code: string; fileId: string }> }) =>
-        asEvidence(() => sandbox.markObtained(args)),
+        "Your FINAL action: declare the episode codes you have obtained (e.g. [\"S01E13\"], or [\"MOVIE\"] for a film). Do this LAST — only after you have moved the files into the target dir, flattened the wrapper, and confirmed from your inspect that the real films are in place. Pure agent judgment: no fileId, the system does not re-read to second-guess you.",
+      inputSchema: z.object({ codes: z.array(z.string()) }),
+      execute: (args: { codes: string[] }) => asEvidence(() => sandbox.markObtained(args)),
     },
     finish: {
       description: "Declare the task done. Returns the honest coverage summary (what is obtained, what remains).",

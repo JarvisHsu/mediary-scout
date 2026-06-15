@@ -22,22 +22,33 @@ function emptyProvider(): ResourceProvider {
   };
 }
 
-function searchThenReportModel() {
+/** Build a MockLanguageModelV3 that emits the given tool calls in order, then stops. */
+function scriptModel(steps: Array<{ tool: string; input: unknown }>) {
   let i = 0;
-  const tool = (name: string, input: unknown) => ({
-    content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: name, input: JSON.stringify(input) }],
-    finishReason: { unified: "tool-calls" as const, raw: "tool-calls" as const },
-    usage: USAGE,
-    warnings: [],
-  });
   return new MockLanguageModelV3({
     doGenerate: async () => {
-      i += 1;
-      if (i === 1) return tool("searchResources", { keyword: "盗梦空间" });
-      if (i === 2) return tool("reportNoCoverage", { reason: "no candidates" });
+      if (i < steps.length) {
+        const step = steps[i]!;
+        i += 1;
+        return {
+          content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: step.tool, input: JSON.stringify(step.input) }],
+          finishReason: { unified: "tool-calls" as const, raw: "tool-calls" as const },
+          usage: USAGE,
+          warnings: [],
+        };
+      }
       return { content: [{ type: "text" as const, text: "done" }], finishReason: { unified: "stop" as const, raw: "stop" as const }, usage: USAGE, warnings: [] };
     },
   });
+}
+
+/** Records every createDirectory call so a test can assert NO separate staging dir is made. */
+class RecordingExecutor extends FakeStorageExecutor {
+  readonly createdDirs: Array<{ name: string; parentId: string }> = [];
+  override async createDirectory(input: { name: string; parentId: string }): Promise<string> {
+    this.createdDirs.push(input);
+    return super.createDirectory(input);
+  }
 }
 
 const title = {
@@ -48,25 +59,92 @@ const title = {
   type: "movie",
 } as unknown as MediaTitle;
 
-describe("runMovieAcquisitionV2 — movie on the V2 engine → MovieWorkflowResult", () => {
-  it("no coverage → status no_coverage, the synthetic movie episode is not obtained, honest notification", async () => {
+describe("runMovieAcquisitionV2 — obtained comes from the AGENT'S coverage, never a mechanical file count", () => {
+  it("no coverage → status no_coverage, the synthetic movie episode is not obtained", async () => {
     const executor = new FakeStorageExecutor();
     const result = await runMovieAcquisitionV2({
       title,
       resourceProvider: emptyProvider(),
       storage: executor,
-      model: searchThenReportModel(),
+      model: scriptModel([
+        { tool: "searchResources", input: { keyword: "盗梦空间" } },
+        { tool: "reportNoCoverage", input: { reason: "no candidates" } },
+      ]),
       workflowRunId: "run-m1",
-      stagingParentDirectoryId: "movies_root",
       moviesParentDirectoryId: "movies_root",
       now: () => "2026-06-14T00:00:00.000Z",
     });
 
     expect(result.status).toBe("no_coverage");
-    expect(result.title.title).toBe("盗梦空间");
-    expect(result.episodes).toHaveLength(1); // the single synthetic movie episode
+    expect(result.episodes).toHaveLength(1);
     expect(result.episodes[0]!.obtained).toBe(false);
     expect(result.notification.kind).toBe("no_coverage");
     expect(result.season.storageDirectoryId).toContain("movies_root"); // movie dir verify-or-created
+  });
+
+  it("obtained TRUE when the agent declares MOVIE coverage (agent mark, not files on disk)", async () => {
+    const executor = new FakeStorageExecutor();
+    const result = await runMovieAcquisitionV2({
+      title,
+      resourceProvider: emptyProvider(),
+      storage: executor,
+      // The agent declares MOVIE obtained; coverage is met by the mark, not a scan.
+      model: scriptModel([
+        { tool: "searchResources", input: { keyword: "盗梦空间" } },
+        { tool: "markObtained", input: { codes: ["MOVIE"] } },
+        { tool: "finish", input: {} },
+      ]),
+      workflowRunId: "run-m2",
+      moviesParentDirectoryId: "movies_root",
+      now: () => "2026-06-14T00:00:00.000Z",
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.episodes[0]!.obtained).toBe(true);
+  });
+
+  it("obtained reflects agent coverage, NOT a file sitting in the dir (the mechanical bug)", async () => {
+    // A stray file is present in the movie dir, but the agent judged no coverage and
+    // never marked. The old code did `listVideoFiles().length > 0` → wrongly obtained.
+    const executor = new FakeStorageExecutor();
+    const movieDir = await executor.createDirectory({ name: "盗梦空间 (2010)", parentId: "movies_root" });
+    executor.seedDirectoryFiles(movieDir, [
+      { id: "stray", storageDirectoryId: movieDir, name: "随便.mkv", sizeBytes: 1, episodeCode: null, providerFileId: "stray" },
+    ]);
+
+    const result = await runMovieAcquisitionV2({
+      title,
+      resourceProvider: emptyProvider(),
+      storage: executor,
+      model: scriptModel([
+        { tool: "searchResources", input: { keyword: "盗梦空间" } },
+        { tool: "reportNoCoverage", input: { reason: "the stray file is not the film" } },
+      ]),
+      workflowRunId: "run-m3",
+      moviesParentDirectoryId: "movies_root",
+      now: () => "2026-06-14T00:00:00.000Z",
+    });
+
+    expect(result.status).toBe("no_coverage");
+    expect(result.episodes[0]!.obtained).toBe(false); // file present, but agent did not mark → not obtained
+  });
+
+  it("uses NO separate staging directory — staging IS the movie dir (flatten in place)", async () => {
+    const executor = new RecordingExecutor();
+    await runMovieAcquisitionV2({
+      title,
+      resourceProvider: emptyProvider(),
+      storage: executor,
+      model: scriptModel([
+        { tool: "searchResources", input: { keyword: "盗梦空间" } },
+        { tool: "reportNoCoverage", input: { reason: "no candidates" } },
+      ]),
+      workflowRunId: "run-m4",
+      moviesParentDirectoryId: "movies_root",
+      now: () => "2026-06-14T00:00:00.000Z",
+    });
+
+    // Exactly one directory is created — the movie dir. No `staging-*` sibling.
+    expect(executor.createdDirs).toEqual([{ name: "盗梦空间 (2010)", parentId: "movies_root" }]);
   });
 });

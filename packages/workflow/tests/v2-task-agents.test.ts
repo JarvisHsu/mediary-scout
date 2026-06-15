@@ -60,10 +60,11 @@ describe("TV/anime system prompt carries the 字字泣血 invariants", () => {
     [/keep the larger|larger file|保大|keep-larger/i, "dedup keep-larger"],
     [/flatten|wrapper (directory|dir)|peel/i, "flatten wrapper dir"],
     [/foreign work|different work|isolate|never (auto-?)?map/i, "isolate foreign works, never auto-map"],
-    [/exists? (right )?now|present.*now|before you mark|only mark/i, "mark only when file present now"],
+    [/LAST (action|step)|never mark before|in place|only after/i, "mark is the LAST step, only after files are placed"],
     [/stop|no (more|further).*(transfer|side effect)|once cover/i, "stop once coverage met"],
     [/do not rename|never rename|keep.*original name/i, "no renaming"],
-    [/multi-season|complete-series|distribute.*season|moveToSeason\(fileIds, season\)/i, "multi-season pack distribution"],
+    [/multi-season|complete-series|distribute.*season|moveToSeason\(\{moves:/i, "multi-season pack distribution"],
+    [/plan the (whole|full) distribution|lay out.*distribution plan|before.*moveToSeason.*plan/i, "plan the full distribution before the batch move"],
     [/not recopied|already has|never recopy|leave the rest/i, "already-covered seasons not recopied"],
     [/unaired.*not missing|daily patrol|leave that gap|never fabricate/i, "ongoing/unobtainable honesty"],
     [/silently fail|magnet can|trust the staging reread|秒传/i, "magnet silent-fail / trust the reread"],
@@ -98,7 +99,7 @@ describe("Movie system prompt carries movie-specific invariants", () => {
   it.each([
     [/remake|same work|identity|year/i, "identity / year / no remake"],
     [/single (video )?file|one file|not a pack|reject.*pack/i, "single video file"],
-    [/exists? (right )?now|present.*now|before you mark|only mark/i, "mark only when present"],
+    [/LAST (action|step)|never mark before|in place|only after/i, "mark is the LAST step, only after the film is in place"],
   ])("mentions %s (%s)", (re) => {
     expect(prompt).toMatch(re);
   });

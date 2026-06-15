@@ -11,11 +11,34 @@ import {
 
 const fixedNow = () => "2026-06-13T00:00:00.000Z";
 
-/** Throws if invoked — proves the already-present movie short-circuits before the agent. */
-function throwingModel() {
+const USAGE = {
+  inputTokens: { total: undefined, noCache: undefined, cacheRead: undefined, cacheWrite: undefined },
+  outputTokens: { total: undefined, text: undefined, reasoning: undefined },
+} as const;
+
+/** §6b#8: the film is already in 115, so the agent inspects, sees it, and marks
+ *  MOVIE from that evidence — no search, no transfer. (There is no mechanical
+ *  file-count no-op anymore; obtained is the agent's coverage.) */
+function inspectAndMarkModel() {
+  const steps = [
+    { tool: "inspectTargetDir", input: {} },
+    { tool: "markObtained", input: { codes: ["MOVIE"] } },
+    { tool: "finish", input: {} },
+  ];
+  let i = 0;
   return new MockLanguageModelV3({
     doGenerate: async () => {
-      throw new Error("model should not run when the movie is already present");
+      if (i < steps.length) {
+        const s = steps[i]!;
+        i += 1;
+        return {
+          content: [{ type: "tool-call" as const, toolCallId: `c${i}`, toolName: s.tool, input: JSON.stringify(s.input) }],
+          finishReason: { unified: "tool-calls" as const, raw: "tool-calls" as const },
+          usage: USAGE,
+          warnings: [],
+        };
+      }
+      return { content: [{ type: "text" as const, text: "已在库" }], finishReason: { unified: "stop" as const, raw: "stop" as const }, usage: USAGE, warnings: [] };
     },
   });
 }
@@ -53,7 +76,7 @@ describe("movie acquisition command + worker", () => {
     expect(second.status).toBe("already_running");
   });
 
-  it("worker claims, runs, and persists a movie acquisition (already-present → succeeded no-op)", async () => {
+  it("worker claims, runs, and persists a movie acquisition (already in 115 → agent marks from evidence → succeeded)", async () => {
     const repository = new InMemoryWorkflowRepository();
     const title = movieTitle();
     await queueMovieAcquisition({
@@ -82,8 +105,7 @@ describe("movie acquisition command + worker", () => {
       repository,
       resourceProvider: new FakeResourceProvider({ keywordResults: {} }),
       storage,
-      model: throwingModel(),
-      stagingParentDirectoryId: "movies_root",
+      model: inspectAndMarkModel(),
       moviesParentDirectoryId: "movies_root",
       now: fixedNow,
     });
