@@ -1,16 +1,16 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { queueCandidateSeries, queueCandidateTracking } from "../lib/workflow-runtime";
+import { queueCandidateSeries, queueCandidateTracking, reserveCandidate } from "../lib/workflow-runtime";
 
 export interface RequestTrackingActionResult {
-  status: "requested" | "already_tracked" | "active_workflow" | "unsupported";
+  status: "requested" | "already_tracked" | "active_workflow" | "reserved" | "unsupported";
   message: string;
 }
 
 export async function requestTrackingAction(input?: {
   candidateId?: string;
-  currentState?: "can_request" | "already_tracked" | "active_workflow";
+  currentState?: "can_request" | "already_tracked" | "active_workflow" | "can_reserve" | "reserved";
 }): Promise<RequestTrackingActionResult> {
   if (input?.currentState === "already_tracked") {
     return {
@@ -24,6 +24,29 @@ export async function requestTrackingAction(input?: {
       status: "active_workflow",
       message: "获取任务已在运行中，不会重复创建。",
     };
+  }
+
+  if (input?.currentState === "reserved") {
+    return {
+      status: "reserved",
+      message: "已预定，上映后会自动获取并通知你。",
+    };
+  }
+
+  // 预定 an unreleased film — track it without running the agent now.
+  if (input?.currentState === "can_reserve" && input?.candidateId) {
+    const request = await reserveCandidate(input.candidateId);
+    if (request.status === "unsupported") {
+      return { status: "unsupported", message: request.message };
+    }
+    if (request.status === "already_running") {
+      return { status: "active_workflow", message: "获取任务已在运行中，不会重复创建。" };
+    }
+    if (request.status === "already_tracked") {
+      return { status: "already_tracked", message: "已追踪，后台会继续按缺集状态检查。" };
+    }
+    revalidatePath("/");
+    return { status: "reserved", message: "已预定，上映后会自动获取并通知你。" };
   }
 
   if (input?.candidateId) {

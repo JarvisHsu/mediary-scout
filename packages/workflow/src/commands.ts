@@ -302,6 +302,78 @@ export async function queueMovieAcquisition(input: {
   return { status: "queued", titleId: input.title.id, workflowRunId };
 }
 
+export interface MovieReservationResult {
+  status: "reserved" | "already_running" | "already_tracked";
+  titleId: string;
+  workflowRunId: string | null;
+}
+
+/**
+ * "预定电影" entrypoint for an UNRELEASED film. Tracks the movie (title + anchor,
+ * carrying its release date) under a `reserved` run that the worker NEVER claims
+ * and that is not an active run — so the acquisition agent does NOT run before
+ * release. The daily patrol's air-time gate (isMovieUnreleased) runs the MOVIE
+ * agent once the release date arrives ("点预定 → 上映后巡检自然收"). Idempotent:
+ * already-tracked (reserved or acquired) and already-acquiring are no-ops.
+ */
+export async function reserveMovie(input: {
+  title: MediaTitle;
+  repository: WorkflowRepository;
+  createWorkflowRunId?: () => string;
+  now?: () => string;
+}): Promise<MovieReservationResult> {
+  const now = input.now ?? (() => new Date().toISOString());
+  const workflowRunId = input.createWorkflowRunId?.() ?? crypto.randomUUID();
+  const reservedAt = now();
+  const season = movieAnchorSeason({
+    titleId: input.title.id,
+    qualityPreference: "4K",
+    storageDirectoryId: "",
+  });
+  // A single unaired, unobtained anchor episode — so the title reads as TRACKED
+  // (not re-requestable) and the patrol/UI can tell reserved from acquired.
+  const episodes = createEpisodeStates({
+    trackedSeasonId: season.id,
+    seasonNumber: 1,
+    totalEpisodes: 1,
+    latestAiredEpisode: 0,
+  });
+
+  const reservation = await input.repository.reserveWorkflowRun({
+    title: input.title,
+    season,
+    workflowRun: {
+      id: workflowRunId,
+      kind: "movie_init",
+      status: "reserved",
+      trackedSeasonId: season.id,
+      startedAt: reservedAt,
+      finishedAt: null,
+      auditEvents: [
+        {
+          type: "movie_reserved",
+          message: `Reserved unreleased movie ${workflowRunId}`,
+          data: { releaseDate: input.title.releaseDate ?? null },
+        },
+      ],
+    },
+    episodes,
+    resourceSnapshots: [],
+    decisions: [],
+    transferAttempts: [],
+    notifications: [],
+    blockIfEpisodeStatesExist: true,
+    blockIfTitleHasActiveRun: true,
+  });
+  if (reservation.status === "already_active") {
+    return { status: "already_running", titleId: input.title.id, workflowRunId: reservation.snapshot.workflowRun.id };
+  }
+  if (reservation.status === "already_has_episode_state") {
+    return { status: "already_tracked", titleId: input.title.id, workflowRunId: null };
+  }
+  return { status: "reserved", titleId: input.title.id, workflowRunId };
+}
+
 export interface ForeignWorkImportResult {
   movieDirectoryId: string;
   movedFileIds: string[];

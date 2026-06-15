@@ -1,9 +1,17 @@
+import { isMovieUnreleased } from "./domain.js";
 import type { EpisodeState, MediaType, TrackedSeason, WorkflowKind } from "./domain.js";
 import type { WorkflowRepository } from "./repository.js";
 
 export type SearchPageState = "empty" | "ready";
 export type SearchCacheStatus = "none" | "hit" | "miss";
-export type SearchActionState = "can_request" | "already_tracked" | "active_workflow";
+export type SearchActionState =
+  | "can_request"
+  | "already_tracked"
+  | "active_workflow"
+  /** An unreleased movie: offer 预定 (reserve) instead of 获取 (acquire). */
+  | "can_reserve"
+  /** A reserved unreleased movie already tracked, waiting for its release. */
+  | "reserved";
 
 export interface MediaSearchSeason {
   seasonNumber: number;
@@ -17,6 +25,8 @@ export interface MediaSearchCandidate {
   title: string;
   originalTitle: string;
   year: number;
+  /** Movie release date (YYYY-MM-DD) — gates 预定 (reserve) vs 获取 (acquire). */
+  releaseDate?: string | null;
   overview: string;
   posterPath: string | null;
   backdropPath: string | null;
@@ -82,7 +92,10 @@ export async function getSearchPageView(input: {
   provider: MediaSearchProvider;
   cache: MediaSearchCache;
   repository: WorkflowRepository;
+  /** Clock for the movie reserve air-time gate (预定 vs 获取). */
+  now?: () => string;
 }): Promise<SearchPageView> {
+  const now = input.now ?? (() => new Date().toISOString());
   const query = normalizeSearchQuery(input.query);
   if (!query) {
     return {
@@ -103,7 +116,7 @@ export async function getSearchPageView(input: {
     query,
     state: "ready",
     cacheStatus: cached ? "hit" : "miss",
-    candidates: await Promise.all(candidates.map((candidate) => toCandidateCard(candidate, input.repository))),
+    candidates: await Promise.all(candidates.map((candidate) => toCandidateCard(candidate, input.repository, now()))),
   };
 }
 
@@ -114,6 +127,7 @@ function normalizeSearchQuery(query: string): string {
 async function toCandidateCard(
   candidate: MediaSearchCandidate,
   repository: WorkflowRepository,
+  now: string,
 ): Promise<SearchCandidateCard> {
   // The search card is SEASON-AGNOSTIC for a TV show: it never pre-picks a
   // season. The user chooses one (or all remaining) via SeasonRequestMenu, and
@@ -144,7 +158,11 @@ async function toCandidateCard(
       candidate.mediaType === "movie"
         ? // A movie tracks as a degenerate one-"episode" anchor season; once it
           // is acquired (or acquiring) it must NOT be re-requestable in search.
-          await actionForTrackedSeason(repository, movieTrackedSeasonId(candidate.tmdbId), "movie_init")
+          // An UNRELEASED film offers 预定 (reserve) instead of 获取 (acquire).
+          await actionForTrackedSeason(repository, movieTrackedSeasonId(candidate.tmdbId), "movie_init", {
+            releaseDate: candidate.releaseDate,
+            now,
+          })
         : canRequestAction(),
   };
 }
@@ -153,6 +171,8 @@ async function actionForTrackedSeason(
   repository: WorkflowRepository,
   trackedSeasonIdValue: string,
   kind: WorkflowKind,
+  // Movie reserve air-time gate: an unreleased film offers 预定 instead of 获取.
+  reserveGate?: { releaseDate: string | null | undefined; now: string },
 ): Promise<SearchCandidateAction> {
   const activeRun = await repository.findActiveWorkflowRun({
     trackedSeasonId: trackedSeasonIdValue,
@@ -167,14 +187,22 @@ async function actionForTrackedSeason(
     };
   }
 
+  const unreleased = reserveGate ? isMovieUnreleased(reserveGate.releaseDate, reserveGate.now) : false;
   const state = await repository.getTrackedSeasonState(trackedSeasonIdValue);
   if (!state || state.episodes.length === 0) {
-    return canRequestAction();
+    // Not tracked yet: an unreleased film is reservable (预定), not acquirable.
+    return unreleased ? reserveAction() : canRequestAction();
   }
-  // Situation-aware wording: a one-off film and a finished season with every
-  // aired episode in hand are DONE → "已获取". Only a still-airing season or one
-  // with real gaps is "已追踪" (we keep watching it). The same rule covers both,
-  // since a movie tracks as a finished one-"episode" anchor.
+  // Tracked. A reserved-but-not-yet-acquired film whose release is still in the
+  // future reads as 已预定 (the daily patrol collects it the moment it releases) —
+  // keyed on the real acquisition signal (the anchor obtained flag), NOT on
+  // isFullyAcquired, which a finished-season/unaired-anchor reserve trips falsely.
+  // Otherwise, situation-aware wording: a one-off film / finished season fully in
+  // hand is DONE → "已获取"; a still-airing season or real gaps is "已追踪".
+  const obtained = state.episodes.some((episode) => episode.obtained);
+  if (unreleased && !obtained) {
+    return reservedAction();
+  }
   return {
     state: "already_tracked",
     label: isFullyAcquired(state) ? "已获取" : "已追踪",
@@ -196,6 +224,26 @@ function canRequestAction(): SearchCandidateAction {
     state: "can_request",
     label: "获取",
     disabled: false,
+    workflowRunId: null,
+  };
+}
+
+/** Untracked unreleased movie → a 预定 (reserve) button. */
+function reserveAction(): SearchCandidateAction {
+  return {
+    state: "can_reserve",
+    label: "预定",
+    disabled: false,
+    workflowRunId: null,
+  };
+}
+
+/** Reserved unreleased movie (tracked, awaiting release) → 已预定. */
+function reservedAction(): SearchCandidateAction {
+  return {
+    state: "reserved",
+    label: "已预定",
+    disabled: true,
     workflowRunId: null,
   };
 }

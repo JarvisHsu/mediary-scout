@@ -6,6 +6,7 @@ import {
   FakeStorageExecutor,
   InMemoryWorkflowRepository,
   reconcileVerifiedFiles,
+  reserveMovie,
   runScheduledType3Monitoring,
   type MediaTitle,
   type TrackedSeason,
@@ -331,6 +332,72 @@ describe("runScheduledType3Monitoring (V2 engine)", () => {
     expect(outcomes[0]).toMatchObject({ trackedSeasonId: `${movie.id}_movie`, status: "ran", workflowRunId: "run_movie_patrol" });
     const saved = await repository.getWorkflowRunSnapshot("run_movie_patrol");
     expect(saved?.workflowRun.kind).toBe("movie_init");
+  });
+
+  it("does NOT patrol a reserved film whose release date is still in the future (air-time gate)", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    await reserveMovie({
+      title: {
+        id: "tmdb_movie_999",
+        tmdbId: 999,
+        type: "movie",
+        title: "未上映大片",
+        originalTitle: "Future Blockbuster",
+        year: 2026,
+        releaseDate: "2026-12-25", // after fixedNow (2026-06-12) → unreleased
+        aliases: [],
+      },
+      repository,
+      createWorkflowRunId: () => "run_reserved",
+      now: fixedNow,
+    });
+
+    const outcomes = await runScheduledType3Monitoring({
+      repository,
+      resourceProvider: emptyProvider(),
+      storage: new FakeStorageExecutor(),
+      model: noCoverageModel(),
+      storageParentDirectoryId: "tv_root",
+      moviesParentDirectoryId: "movies_root",
+      now: fixedNow,
+      createWorkflowRunId: () => "run_should_not_exist",
+    });
+
+    expect(outcomes).toEqual([]); // skipped — the agent never runs before release
+    expect(await repository.getWorkflowRunSnapshot("run_should_not_exist")).toBeNull();
+  });
+
+  it("patrols a reserved film ONCE its release date has arrived (auto-collect at release)", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    await reserveMovie({
+      title: {
+        id: "tmdb_movie_998",
+        tmdbId: 998,
+        type: "movie",
+        title: "刚上映",
+        originalTitle: "Just Released",
+        year: 2026,
+        releaseDate: "2026-01-01", // before fixedNow (2026-06-12) → released, collect it
+        aliases: [],
+      },
+      repository,
+      createWorkflowRunId: () => "run_reserved",
+      now: fixedNow,
+    });
+
+    const outcomes = await runScheduledType3Monitoring({
+      repository,
+      resourceProvider: emptyProvider(),
+      storage: new FakeStorageExecutor(),
+      model: noCoverageModel(),
+      storageParentDirectoryId: "tv_root",
+      moviesParentDirectoryId: "movies_root",
+      now: fixedNow,
+      createWorkflowRunId: () => "run_release_patrol",
+    });
+
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes[0]).toMatchObject({ status: "ran", workflowRunId: "run_release_patrol" });
   });
 
   it("does not patrol an already-obtained movie", async () => {

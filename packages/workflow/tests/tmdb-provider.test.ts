@@ -252,6 +252,7 @@ describe("TmdbSearchProvider", () => {
         title: "我的僵尸女儿",
         originalTitle: "My Zombie Daughter",
         year: 2025,
+        releaseDate: "2025-10-31",
         overview: "电影",
         posterPath: null,
         backdropPath: "/zombie-bg.jpg",
@@ -371,6 +372,7 @@ describe("TmdbSearchProvider", () => {
     expect(target.title.id).toBe("tmdb_movie_129");
     expect(target.title.type).toBe("anime");
     expect(target.title.year).toBe(2001);
+    expect(target.title.releaseDate).toBe("2001-07-20"); // full date kept for the reserve air-time gate
     expect(target.keyword).toContain("千与千寻");
   });
 });

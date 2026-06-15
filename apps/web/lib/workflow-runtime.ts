@@ -19,6 +19,7 @@ import {
   queueMovieAcquisition,
   queueSeriesInitialization,
   queueTrackingInitialization,
+  reserveMovie,
   runQueuedMovieAcquisition,
   runQueuedSeriesInitialization,
   runQueuedType2Workflow,
@@ -256,6 +257,7 @@ async function movieTargetFromTmdbId(
     title: candidate.title,
     originalTitle: candidate.originalTitle,
     year: candidate.year,
+    releaseDate: candidate.releaseDate ?? null,
     aliases:
       candidate.originalTitle && candidate.originalTitle !== candidate.title ? [candidate.originalTitle] : [],
     posterPath: candidate.posterPath,
@@ -263,6 +265,28 @@ async function movieTargetFromTmdbId(
     overview: candidate.overview,
   };
   return { title, keyword: candidate.title };
+}
+
+export type CandidateReserveRequestResult =
+  | { status: "reserved" | "already_running" | "already_tracked"; trackedSeasonId: string }
+  | { status: "unsupported"; message: string };
+
+/**
+ * 预定 an unreleased film: track it (carrying its release date) WITHOUT running
+ * the agent. The daily patrol's air-time gate acquires it once it releases.
+ * Movies only (TV/anime have no reserve concept).
+ */
+export async function reserveCandidate(candidateId: string): Promise<CandidateReserveRequestResult> {
+  const movieTmdbId = parseMovieCandidateId(candidateId);
+  if (movieTmdbId === null) {
+    return { status: "unsupported", message: "只有电影可以预定。" };
+  }
+  const movie = await movieTargetFromTmdbId(movieTmdbId);
+  if (!movie) {
+    return { status: "unsupported", message: "无法获取该电影的信息。" };
+  }
+  const request = await reserveMovie({ title: movie.title, repository: getWorkflowRepository() });
+  return { status: request.status, trackedSeasonId: `${movie.title.id}_movie` };
 }
 
 /**

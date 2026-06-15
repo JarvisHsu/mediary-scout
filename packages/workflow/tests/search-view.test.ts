@@ -4,11 +4,29 @@ import {
   getSearchPageView,
   InMemoryMediaSearchCache,
   InMemoryWorkflowRepository,
+  reserveMovie,
   type MediaSearchCandidate,
   type MediaSearchProvider,
   type MediaTitle,
   type TrackedSeason,
 } from "../src/index.js";
+
+const NOW = "2026-06-15T00:00:00.000Z";
+
+function movieCandidate(releaseDate: string | null): MediaSearchCandidate {
+  return {
+    tmdbId: 1000,
+    mediaType: "movie",
+    title: "未上映大片",
+    originalTitle: "Future Blockbuster",
+    year: 2026,
+    releaseDate,
+    overview: "",
+    posterPath: null,
+    backdropPath: null,
+    seasons: [],
+  };
+}
 
 describe("getSearchPageView", () => {
   it("returns an empty search state without calling the provider when query is blank", async () => {
@@ -258,6 +276,59 @@ describe("getSearchPageView", () => {
       disabled: true,
       workflowRunId: "run_movie_active",
     });
+  });
+
+  it("offers 预定 (reserve), not 获取, for an UNRELEASED untracked movie", async () => {
+    const view = await getSearchPageView({
+      query: "未上映",
+      provider: countingSearchProvider([movieCandidate("2026-12-25")]), // future
+      cache: new InMemoryMediaSearchCache(),
+      repository: new InMemoryWorkflowRepository(),
+      now: () => NOW,
+    });
+
+    expect(view.candidates[0]?.action).toMatchObject({ state: "can_reserve", label: "预定", disabled: false });
+  });
+
+  it("still offers 获取 (acquire) for a RELEASED untracked movie", async () => {
+    const view = await getSearchPageView({
+      query: "已上映",
+      provider: countingSearchProvider([movieCandidate("2024-01-01")]), // past
+      cache: new InMemoryMediaSearchCache(),
+      repository: new InMemoryWorkflowRepository(),
+      now: () => NOW,
+    });
+
+    expect(view.candidates[0]?.action).toMatchObject({ state: "can_request", label: "获取", disabled: false });
+  });
+
+  it("reads as 已预定 (reserved) once an unreleased movie has been reserved", async () => {
+    const repository = new InMemoryWorkflowRepository();
+    await reserveMovie({
+      title: {
+        id: "tmdb_movie_1000",
+        tmdbId: 1000,
+        type: "movie",
+        title: "未上映大片",
+        originalTitle: "Future Blockbuster",
+        year: 2026,
+        releaseDate: "2026-12-25",
+        aliases: [],
+      },
+      repository,
+      createWorkflowRunId: () => "run_reserved",
+      now: () => NOW,
+    });
+
+    const view = await getSearchPageView({
+      query: "未上映",
+      provider: countingSearchProvider([movieCandidate("2026-12-25")]),
+      cache: new InMemoryMediaSearchCache(),
+      repository,
+      now: () => NOW,
+    });
+
+    expect(view.candidates[0]?.action).toMatchObject({ state: "reserved", label: "已预定", disabled: true });
   });
 
   it("serves repeated searches from cache instead of calling the provider again", async () => {

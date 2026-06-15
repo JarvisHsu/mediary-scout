@@ -4,7 +4,17 @@ export type LatestAiredSource = "metadata" | "manual" | "unknown";
 export type AirStatus = "aired" | "unaired" | "unknown";
 export type MetadataStatus = "confirmed" | "provider_ahead" | "storage_only";
 export type WorkflowKind = "type1_package_init" | "type2_init" | "type3_monitor" | "movie_init";
-export type WorkflowStatus = "queued" | "running" | "succeeded" | "failed" | "partial" | "no_coverage";
+export type WorkflowStatus =
+  | "queued"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "partial"
+  | "no_coverage"
+  /** A reserved (未上映) movie: tracked so the daily patrol can collect it when it
+   *  releases, but NOT queued/running — the worker never claims it and it is not an
+   *  "active" run (see isActiveWorkflowStatus). The air-time gate runs the agent. */
+  | "reserved";
 export type ResourceType = "115" | "magnet" | "manual";
 export type TransferStatus = "succeeded" | "failed" | "no_target_change";
 export type Confidence = "low" | "medium" | "high";
@@ -17,6 +27,10 @@ export interface MediaTitle {
   originalTitle: string;
   year: number;
   aliases: string[];
+  /** TMDB release date (YYYY-MM-DD) for a movie — the air-time gate for reserve:
+   *  an unreleased film (date in the future) is reserved, not acquired, until it
+   *  releases. Absent/null for TV and for movies TMDB has no date for. */
+  releaseDate?: string | null;
   /** Scraped artwork/metadata — durable product state, read straight from the DB. */
   posterPath?: string | null;
   backdropPath?: string | null;
@@ -220,6 +234,22 @@ export function episodePartsFromCode(code: string): { seasonNumber: number; epis
  * with no parallel type system. The user never sees the anchor — only "已入库".
  * status is `completed` (no monitoring) and there is no real airing concept.
  */
+/**
+ * The reserve air-time gate. A movie is "unreleased" (→ reserve, don't run the
+ * agent yet) only when it has a release date still in the FUTURE relative to now.
+ * Missing/empty/null date → released (we never gate on the unknown; the patrol's
+ * no_coverage retry already covers 已上映无源). Compared by calendar date
+ * (YYYY-MM-DD lexicographic), so the day it releases it counts as released.
+ */
+export function isMovieUnreleased(releaseDate: string | null | undefined, now: string): boolean {
+  if (!releaseDate) {
+    return false;
+  }
+  const release = releaseDate.slice(0, 10);
+  const today = now.slice(0, 10);
+  return release > today;
+}
+
 export function movieAnchorSeason(input: {
   titleId: string;
   qualityPreference: string;

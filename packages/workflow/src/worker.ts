@@ -9,6 +9,7 @@ import type {
 } from "./domain.js";
 import type { ResourceProvider, StorageExecutor } from "./ports.js";
 import type { WorkflowRepository } from "./repository.js";
+import { isMovieUnreleased } from "./domain.js";
 import {
   runMovieAcquisitionV2AndPersist,
   runSeriesInitializationV2AndPersist,
@@ -339,6 +340,12 @@ async function patrolMovie(args: {
   }
   const obtained = state.episodes.some((episode) => episode.obtained);
   if (obtained) {
+    return null;
+  }
+  // Air-time gate: a reserved (未上映) film whose release date is still in the
+  // future stays reserved — the agent must NOT run before release. Once the date
+  // arrives this gate opens and the patrol collects it (点预定 → 上映后自然收).
+  if (isMovieUnreleased(state.title.releaseDate, now())) {
     return null;
   }
 

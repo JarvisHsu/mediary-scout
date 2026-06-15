@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, LoaderCircle, Plus } from "lucide-react";
+import { CalendarClock, Check, LoaderCircle, Plus } from "lucide-react";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { requestTrackingAction, type RequestTrackingActionResult } from "../app/actions";
@@ -8,9 +8,12 @@ import type { SearchActionState } from "@media-track/workflow";
 import { RequestedBadge } from "./request-state";
 
 /**
- * Acquire control for a movie candidate. Three visual states, kept consistent
- * with SeasonRequestMenu / RequestSeriesButton:
+ * Acquire control for a movie candidate. Visual states, kept consistent with
+ * SeasonRequestMenu / RequestSeriesButton:
  *  - requestable → a green "获取" pill;
+ *  - reservable (an UNRELEASED film) → a "预定" pill; clicking reserves it so the
+ *    daily patrol acquires it the moment it releases;
+ *  - reserved → a "已预定" clock badge (tracked, waiting for release);
  *  - in progress (just requested, or an active workflow) → a spinning "已请求"
  *    badge (a spinner, not a checkmark — it is NOT done yet);
  *  - settled (already acquired / still tracked) → a "已获取" / "已追踪" badge.
@@ -36,17 +39,31 @@ export function RequestTrackButton({
   // NOTE: only already_tracked counts as done — active_workflow also sets
   // `disabled`, so we must NOT treat disabled as settled or an in-flight run
   // would wrongly show the green "done" badge.
+  // Reserved (未上映, 已预定) — tracked, waiting for release. Distinct from settled:
+  // it is NOT acquired, so it is a clock badge, never the green "done" checkmark.
+  const reserved = actionState === "reserved" || result?.status === "reserved";
   const inProgress =
+    !reserved &&
     actionState !== "already_tracked" &&
     (result?.status === "requested" ||
       result?.status === "active_workflow" ||
       actionState === "active_workflow");
   const settled =
     !inProgress &&
+    !reserved &&
     (disabled || actionState === "already_tracked" || result?.status === "already_tracked");
 
   if (inProgress) {
     return <RequestedBadge title={result?.message} />;
+  }
+
+  if (reserved) {
+    return (
+      <span className="hub-badge tone-amber" title={result?.message}>
+        <CalendarClock size={12} aria-hidden />
+        已预定
+      </span>
+    );
   }
 
   if (settled) {
@@ -80,10 +97,12 @@ export function RequestTrackButton({
       >
         {isPending ? (
           <LoaderCircle size={16} className="spin" aria-hidden />
+        ) : actionState === "can_reserve" ? (
+          <CalendarClock size={16} aria-hidden />
         ) : (
           <Plus size={16} aria-hidden />
         )}
-        {isPending ? "请求中" : label}
+        {isPending ? (actionState === "can_reserve" ? "预定中" : "请求中") : label}
       </button>
       {/* A non-queued result (e.g. unsupported / failed) fell through to the
           requestable button — surface its reason instead of swallowing it. */}
