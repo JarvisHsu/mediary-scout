@@ -523,6 +523,27 @@ describe("Storage115Executor", () => {
     expect(api.removedOfflineHashes).toEqual([hash]); // stuck 等待中 → cancelled
   });
 
+  it("flags an unresolvable magnet (offline-task name == infohash → no metadata, fake/dead)", async () => {
+    const hash = "57e6d442793c87d7f81eecc675ab4eb3b4925bd3";
+    // 115 accepted a fake/non-existent magnet but resolved NO metadata, so it shows
+    // the raw infohash as the task name. Measured on the real test root.
+    const api = new FakePan115Api({
+      offlineTaskList: [{ infoHash: hash, name: hash, percentDone: 0, status: 1, statusText: "等待中", url: "" }],
+    });
+    const executor = new Storage115Executor({ api, offlineMaterializeAttempts: 2, offlineMaterializePollMs: 1, sleep: async () => {} });
+
+    const attempt = await executor.transfer({
+      workflowRunId: "run_unresolved",
+      directoryId: "123",
+      candidate: candidateFixture({ type: "magnet", providerPayload: { url: `magnet:?xt=urn:btih:${hash}`, rawType: "magnet" } }),
+    });
+
+    expect(attempt.status).toBe("no_target_change");
+    expect(api.removedOfflineHashes).toEqual([hash]); // still cancelled (frees quota)
+    // The attempt carries the signal the dead-link recorder uses to pick a longer TTL.
+    expect(attempt.providerMessage).toMatch(/name == infohash/);
+  });
+
   it("cancels an offline task that task status shows still downloading (not 秒传)", async () => {
     const hash = "57e6d442793c87d7f81eecc675ab4eb3b4925bd3";
     const api = new FakePan115Api({

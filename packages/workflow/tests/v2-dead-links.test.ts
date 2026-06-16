@@ -98,4 +98,17 @@ describe("WorkflowRepository dead-link store", () => {
     // to retry — 115 may have cached it by now); the permanent share stays dead
     expect(await repo.listDeadLinkKeys({ now: "2026-07-16T00:00:00.000Z" })).toEqual(["115:gone"]);
   });
+
+  it("honors a per-record ttlMs — an unresolvable (name==infohash) magnet gets a LONGER soft TTL", async () => {
+    const repo = new InMemoryWorkflowRepository();
+    const t0 = "2026-06-16T00:00:00.000Z";
+    const ms = (days: number) => days * 24 * 60 * 60 * 1000;
+    await repo.recordDeadLink({ key: "magnet:normal", kind: "magnet", reason: "no 秒传", permanent: false, now: t0 }); // default 7d
+    await repo.recordDeadLink({ key: "magnet:fake", kind: "magnet", reason: "name==infohash", permanent: false, ttlMs: ms(90), now: t0 });
+
+    // +30 days: the normal one already resurrected, the long-TTL fake is still skipped
+    expect(await repo.listDeadLinkKeys({ now: "2026-07-16T00:00:00.000Z" })).toEqual(["magnet:fake"]);
+    // +120 days: even the long-TTL fake finally resurrects (never permanent)
+    expect(await repo.listDeadLinkKeys({ now: "2026-10-14T00:00:00.000Z" })).toEqual([]);
+  });
 });

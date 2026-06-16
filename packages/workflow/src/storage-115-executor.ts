@@ -396,6 +396,10 @@ export class Storage115Executor implements StorageExecutor {
     // just a lagging directory index, NOT a failure — so we extend the grace and
     // must not cancel it (the bug the wall-clock-only window had).
     let offlineTaskComplete = false;
+    // 115 showing the raw infohash as the task NAME means it could not resolve any
+    // metadata (no peers) — a fake or thoroughly-dead torrent. Captured so the
+    // dead-link recorder can give it a much longer (still non-permanent) TTL.
+    let nameIsInfohash = false;
     if (action.ok && isOfflineTaskCandidate(input.candidate)) {
       let remaining = this.offlineMaterializeAttempts;
       let extendedForCompletion = false;
@@ -403,8 +407,12 @@ export class Storage115Executor implements StorageExecutor {
         if (await this.stagingTreeHasVideo(safeDirectoryId)) {
           break; // file landed → 秒传 confirmed by the dir
         }
-        if (!offlineTaskComplete && offlineInfoHash && (await this.isOfflineTaskComplete(offlineInfoHash))) {
-          offlineTaskComplete = true;
+        if (offlineInfoHash) {
+          const task = await this.findOfflineTask(offlineInfoHash);
+          if (task) {
+            if (!offlineTaskComplete && (/成功|完成/.test(task.statusText) || task.percentDone >= 100)) offlineTaskComplete = true;
+            if (task.name.trim().toLowerCase() === offlineInfoHash) nameIsInfohash = true;
+          }
         }
         if (offlineTaskComplete && !extendedForCompletion) {
           // One-time grace extension for a confirmed 秒传 whose listing is slow;
@@ -446,7 +454,7 @@ export class Storage115Executor implements StorageExecutor {
         }
       }
     }
-    const providerMessage = transferMessage(input.candidate, action, status, offlineTaskComplete);
+    const providerMessage = transferMessage(input.candidate, action, status, offlineTaskComplete, nameIsInfohash);
 
     const attempt: TransferAttempt = {
       // Scope the id to the run: the per-executor counter resets when the worker
@@ -626,19 +634,15 @@ export class Storage115Executor implements StorageExecutor {
    * still-waiting/downloading/failed task is NOT complete → false, so the caller
    * stops waiting and cancels it. Best-effort: a failed probe returns false.
    */
-  private async isOfflineTaskComplete(infoHash: string): Promise<boolean> {
+  private async findOfflineTask(infoHash: string): Promise<Pan115OfflineTask | null> {
     let tasks;
     try {
       tasks = await this.callApi("listOfflineTasks", () => this.api.listOfflineTasks());
     } catch {
-      return false;
+      return null;
     }
     const wanted = infoHash.toLowerCase();
-    const task = tasks.find((entry) => entry.infoHash.toLowerCase() === wanted);
-    if (task === undefined) {
-      return false;
-    }
-    return /成功|完成/.test(task.statusText) || task.percentDone >= 100;
+    return tasks.find((entry) => entry.infoHash.toLowerCase() === wanted) ?? null;
   }
 
   private async executeCandidateTransfer(
@@ -1047,12 +1051,19 @@ function transferMessage(
   action: Pan115ActionResult,
   status: TransferStatus,
   offlineTaskComplete: boolean,
+  nameIsInfohash: boolean,
 ): string {
   // A CONFIRMED 秒传 (115 reported 下载成功) whose file merely lagged the listing
   // window is ALIVE, not dead — say so explicitly so the dead-link recorder never
   // poisons it (deadLinkReason whitelists 下载成功).
   if (candidate.type === "magnet" && status === "no_target_change" && offlineTaskComplete) {
     return "115 秒传 confirmed (下载成功); file listing lagging";
+  }
+  // 115 showed the infohash as the task name → it resolved NO metadata (no peers):
+  // a fake or thoroughly-dead torrent. Signal it so the recorder gives it a long
+  // (still non-permanent) dead-link TTL.
+  if (candidate.type === "magnet" && status === "no_target_change" && nameIsInfohash) {
+    return "offline task unresolved (name == infohash); likely fake/dead, no target materialized";
   }
   if (action.message) {
     if (candidate.type === "magnet" && status === "no_target_change") {

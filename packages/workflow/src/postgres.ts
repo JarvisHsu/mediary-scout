@@ -91,9 +91,11 @@ const SCHEMA = `
     kind text NOT NULL,
     reason text NOT NULL,
     permanent boolean NOT NULL DEFAULT true,
+    expires_at text,
     recorded_at text NOT NULL
   );
   ALTER TABLE dead_links ADD COLUMN IF NOT EXISTS permanent boolean NOT NULL DEFAULT true;
+  ALTER TABLE dead_links ADD COLUMN IF NOT EXISTS expires_at text;
 `;
 
 export async function initializeWorkflowPostgresSchema(pool: Pool): Promise<void> {
@@ -309,25 +311,29 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
     kind: "pan115" | "magnet";
     reason: string;
     permanent: boolean;
+    ttlMs?: number;
     now?: string;
   }): Promise<void> {
     await this.ensureSchema();
+    const recordedAt = input.now ?? new Date().toISOString();
+    const expiresAt = input.permanent
+      ? null
+      : new Date(new Date(recordedAt).getTime() + (input.ttlMs ?? MAGNET_DEAD_LINK_TTL_MS)).toISOString();
     // Idempotent: keep the first record (when it was first proven dead).
     await this.pool.query(
-      "INSERT INTO dead_links (key, kind, reason, permanent, recorded_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (key) DO NOTHING",
-      [input.key, input.kind, input.reason, input.permanent, input.now ?? new Date().toISOString()],
+      "INSERT INTO dead_links (key, kind, reason, permanent, expires_at, recorded_at) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (key) DO NOTHING",
+      [input.key, input.kind, input.reason, input.permanent, expiresAt, recordedAt],
     );
   }
 
   async listDeadLinkKeys(options?: { now?: string }): Promise<string[]> {
     await this.ensureSchema();
-    // Permanent deaths always filter; soft (magnet) ones only within their TTL.
-    const cutoff = new Date(
-      new Date(options?.now ?? new Date().toISOString()).getTime() - MAGNET_DEAD_LINK_TTL_MS,
-    ).toISOString();
+    // Permanent deaths (expires_at NULL) always filter; soft ones only until their
+    // own expiry (so an unresolvable magnet's longer TTL is honored per-record).
+    const now = options?.now ?? new Date().toISOString();
     const result = await this.pool.query(
-      "SELECT key FROM dead_links WHERE permanent = true OR recorded_at > $1",
-      [cutoff],
+      "SELECT key FROM dead_links WHERE expires_at IS NULL OR expires_at > $1",
+      [now],
     );
     return result.rows.map((row) => String(row.key));
   }

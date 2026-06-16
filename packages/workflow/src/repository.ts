@@ -117,25 +117,30 @@ export class InMemoryWorkflowRepository implements WorkflowRepository {
     kind: DeadLink["kind"];
     reason: string;
     permanent: boolean;
+    ttlMs?: number;
     now?: string;
   }): Promise<void> {
     // Idempotent: keep the first record (when it was first proven dead).
     if (this.deadLinks.has(input.key)) {
       return;
     }
+    const recordedAt = input.now ?? new Date().toISOString();
     this.deadLinks.set(input.key, {
       key: input.key,
       kind: input.kind,
       reason: input.reason,
       permanent: input.permanent,
-      recordedAt: input.now ?? new Date().toISOString(),
+      recordedAt,
+      expiresAt: input.permanent
+        ? null
+        : new Date(new Date(recordedAt).getTime() + (input.ttlMs ?? MAGNET_DEAD_LINK_TTL_MS)).toISOString(),
     });
   }
 
   async listDeadLinkKeys(options?: { now?: string }): Promise<string[]> {
-    const cutoff = new Date(new Date(options?.now ?? new Date().toISOString()).getTime() - MAGNET_DEAD_LINK_TTL_MS).toISOString();
+    const now = options?.now ?? new Date().toISOString();
     return [...this.deadLinks.values()]
-      .filter((link) => link.permanent || link.recordedAt > cutoff)
+      .filter((link) => link.expiresAt === null || link.expiresAt > now)
       .map((link) => link.key);
   }
 

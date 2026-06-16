@@ -18,20 +18,37 @@ export type DeadLinkKind = "pan115" | "magnet";
  */
 export const MAGNET_DEAD_LINK_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+/**
+ * A longer soft TTL for a magnet 115 could NOT resolve at all — the offline task
+ * name came back as the raw infohash (no dn, no metadata, no peers), i.e. a fake
+ * or thoroughly-dead torrent. Still soft (never permanent: a real torrent could
+ * regain seeders), but skipped much longer so we don't re-transfer obvious junk.
+ */
+export const UNRESOLVED_MAGNET_DEAD_LINK_TTL_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
+
 export interface DeadLink {
   /** Stable identity (115:<sharecode> or magnet:<infohash>) — see deadLinkKey. */
   key: string;
   kind: DeadLinkKind;
   reason: string;
-  /** true = never resurrect (115 share is gone); false = soft, expires after the
-   *  TTL so a magnet can be retried (it may 秒传 once 115 has cached it). */
+  /** true = never resurrect (115 share is gone); false = soft, expires at expiresAt. */
   permanent: boolean;
   recordedAt: string;
+  /** When a soft link becomes retriable again (recordedAt + its TTL). null = permanent. */
+  expiresAt: string | null;
 }
 
 /** The DB-backed store of known-dead links (a narrow view of WorkflowRepository). */
 export interface DeadLinkStore {
-  recordDeadLink(input: { key: string; kind: DeadLinkKind; reason: string; permanent: boolean; now?: string }): Promise<void>;
+  recordDeadLink(input: {
+    key: string;
+    kind: DeadLinkKind;
+    reason: string;
+    permanent: boolean;
+    /** Soft-link lifetime; defaults to MAGNET_DEAD_LINK_TTL_MS. Ignored if permanent. */
+    ttlMs?: number;
+    now?: string;
+  }): Promise<void>;
   /** The keys to filter out of a search RIGHT NOW: every permanent dead-link plus
    *  every soft one still within its TTL. Expired soft links are omitted (the
    *  resource gets another chance). */

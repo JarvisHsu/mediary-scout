@@ -1,7 +1,7 @@
 import type { TransferAttempt } from "../domain.js";
 import type { StorageExecutor } from "../ports.js";
 import type { CandidateRegistry } from "./candidate-registry.js";
-import { deadLinkKey, deadLinkReason, type DeadLinkStore } from "./dead-links.js";
+import { deadLinkKey, deadLinkReason, UNRESOLVED_MAGNET_DEAD_LINK_TTL_MS, type DeadLinkStore } from "./dead-links.js";
 import type { SimTreeFile, StorageV2, TransferAttemptResult } from "./storage-115-simulator.js";
 
 /**
@@ -69,11 +69,16 @@ export class RealStorageV2 implements StorageV2 {
     // A 115 share that fails loud is gone for good (permanent). A magnet is keyed
     // by infohash, whose deadness is time-variable (115 may cache it later, a clean
     // magnet for the same hash may appear) — so it is SOFT (TTL), never permanent.
+    // An unresolvable magnet (115 showed the infohash as the name → no metadata, a
+    // fake/dead torrent) gets a much longer soft TTL so we don't re-transfer junk.
+    const permanent = identity.kind === "pan115";
+    const ttlMs = !permanent && /name == infohash/.test(reason) ? UNRESOLVED_MAGNET_DEAD_LINK_TTL_MS : undefined;
     await this.deadLinkStore.recordDeadLink({
       key: identity.key,
       kind: identity.kind,
       reason,
-      permanent: identity.kind === "pan115",
+      permanent,
+      ...(ttlMs === undefined ? {} : { ttlMs }),
     });
   }
 

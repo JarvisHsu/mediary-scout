@@ -69,9 +69,9 @@ class RecordingExecutor implements StorageExecutor {
 }
 
 class FakeDeadLinkStore {
-  recorded: Array<{ key: string; kind: string; reason: string; permanent: boolean }> = [];
-  async recordDeadLink(input: { key: string; kind: "pan115" | "magnet"; reason: string; permanent: boolean }): Promise<void> {
-    this.recorded.push({ key: input.key, kind: input.kind, reason: input.reason, permanent: input.permanent });
+  recorded: Array<{ key: string; kind: string; reason: string; permanent: boolean; ttlMs?: number }> = [];
+  async recordDeadLink(input: { key: string; kind: "pan115" | "magnet"; reason: string; permanent: boolean; ttlMs?: number }): Promise<void> {
+    this.recorded.push({ key: input.key, kind: input.kind, reason: input.reason, permanent: input.permanent, ...(input.ttlMs === undefined ? {} : { ttlMs: input.ttlMs }) });
   }
   async listDeadLinkKeys(): Promise<string[]> {
     return this.recorded.map((r) => r.key);
@@ -185,6 +185,17 @@ describe("RealStorageV2 — StorageExecutor → StorageV2 adapter", () => {
         // a magnet is SOFT (permanent: false) — it may resurrect (see deadLinkKey).
         { key: "magnet:edef9b0fc91c9ccdf5b3e43f6cc5278160e81dd5", kind: "magnet", reason: "no target materialized", permanent: false },
       ]);
+    });
+
+    it("gives an unresolvable magnet (name == infohash) a longer soft TTL (90 days)", async () => {
+      const store = new FakeDeadLinkStore();
+      const executor = new RecordingExecutor({ status: "no_target_change", message: "offline task unresolved (name == infohash); likely fake/dead" });
+      const { storage, registry } = adapter(executor, new CandidateRegistry(), store);
+      registry.record({ ...candidate("mag"), type: "magnet", providerPayload: { url: "magnet:?xt=urn:btih:edef9b0fc91c9ccdf5b3e43f6cc5278160e81dd5" } });
+
+      await storage.transferCandidate({ candidateId: "mag", intoDirectoryId: "staging" });
+
+      expect(store.recorded[0]).toMatchObject({ kind: "magnet", permanent: false, ttlMs: 90 * 24 * 60 * 60 * 1000 });
     });
 
     it("does NOT record a 任务已存在 magnet (prior good task) nor a successful transfer", async () => {
