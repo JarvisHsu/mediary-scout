@@ -142,8 +142,29 @@ const MISTAKES = `# Worked right/wrong examples (the hard-won lessons)
 - Acting on a hunch: transferring / deleting / marking without first stating Evidence → Facts → Decision. WRONG. Right: state the evidence and the facts, then act.
 - Serial single transfers: transfer-one → re-search → transfer-one, repeated, hammering 115. WRONG. Right: decide the covering set, then transfer it back-to-back without re-searching.`;
 
+const SEARCH = `# Keyword strategy by media type (lived PanSou research)
+
+Your per-run input already gives you THIS title's recipe (searchHints). This section is the full map — read it when the injected hint isn't enough or you're unsure.
+
+## Universal laws (every type)
+- A single 0 ≠ no resource: PanSou jitters across calls. Re-run the SAME keyword once before concluding empty.
+- Quality is NOT a search word. Putting 4K/1080P into the keyword filters the title match AND skews to same-quality WRONG works (莉可丽丝 4K → all Palm Royale). Read quality off the returned titles instead. If you must narrow by quality use +1080P / +蓝光 (series), NEVER +4K — true 4K is rare for series/anime.
+- count ≠ relevance: read the top titles. +year (plain digits) is the universal safe disambiguator/de-noiser.
+- +全集 as an added token usually zeroes results (it's a filename field 「全N集」, not a query word).
+
+## Per type
+- 电影 (movie): first = bare 中文名 (highest yield, target usually #1). Weak → retry → +year → bare English/original → +REMUX/合集. AVOID 中文名+画质 (热辣滚烫 4K/1080P/蓝光 all 0), English+year (zeroes). Aliases are a backdoor (YOLO, 「第N部」); format-sensitive (沙丘2 works, 沙丘 2 with a space = 0).
+- 国产剧 (CN tv): first = bare 中文名. Weak → +year (disambiguate common-char names like 三体→飞驰人生), +集数/第一季. AVOID bare English (0), +全集, +国产剧/电视剧 (category noise). Whole-season 「全N集打包」 common; cross-season packs rare.
+- 美剧 (US tv): DON'T bare-search — bare 中文名 hits a relevance gate → 0. First = 中文名+a token (中文名+1080P / 中文名+美剧). For the full-series pack: 英文名+Complete / 英文名+Season (302/127 hits — one pack covers many seasons). Also +蓝光/BD, +第N季. AVOID bare 中文名 (0), bare English (unless ultra-distinct like The Last of Us), +year (premiere year often mismatches). Classic finished shows almost always have a全系列合集; new/niche shows don't → fall back to per-season 中文名+第N季.
+- 韩剧 (KR tv): first = bare 中文译名 (translations are stable). Weak → +year, English name (niche K-dramas often have higher quality under the English name). AVOID +全集, Chinese 第X季, quality words. Korean original name only for raw/no-subs.
+- 日剧 (JP tv, live-action): first = bare 中文 COMMON translation — multiple unstable translations is the #1 trap (Silent=静雪, Legal High=胜者即是正义; the wrong one gets buried under same-name US shows / AV). Weak → English romaji name (Hanzawa Naoki, clean), +year. AVOID single-word English names (Silent → drowned), katakana (AV pollution), +全集.
+- 日漫 (JP anime): first = bare 中文译名 (high hit @0). Weak → +1080P (NOT 4K! real 4K anime is rare), +第N季, original name (Spy×Family with the × sign), 字幕组/压制组 (LoliHouse=WebRip packs, DBD-Raws=BDRip — quality filters, small counts). AVOID +全集, +4K (→0), romaji+any-token (dies). English name is high-count but quality-mixed (720p/dual-audio) → fallback only.
+- 国漫 (CN anime): bare 中文名 is UNSTABLE (凡人/一人 have volume, but 斗罗/斗破 bare → 0). First = 名+国漫 OR 名+year. Weak → +国漫 (the donghua master key), +year, +GM-Team (top donghua encoder), long-running补季 +第N季. AVOID +动画/+番剧 (worse), English name (dead). 一人之下 is a pollution hotspot (bare name mixes 神雕侠侣; just bare-name + hand-rank).
+- 美漫 (US anime): first = bare 中文译名 (clean small set). Weak, for VOLUME → 英文名+画质/year (Rick and Morty 1080P → 975), 中文名+动画 (WORKS for 美漫, opposite of 国漫), 中文名+year. AVOID bare English without quality (→0, except Invincible/BoJack), niche-show 中文名+any-token (马男+全集/合集/1080P/第六季 all 0 — only bare 中文名 or English name).`;
+
 const SECTIONS = {
   protocol: PROTOCOL,
+  search: SEARCH,
   "dead-links-black-box": DEAD_LINKS_BLACK_BOX,
   dedup: DEDUP,
   movie: MOVIE,
@@ -175,6 +196,6 @@ export function skillIndexForAgent(agent: "movie" | "tv"): string {
   const own = agent; // "movie" or "tv"
   return `You have a domain skill manual. Read a section on demand with readSkill({ section: "<name>" }) — do not act from memory when a section covers your situation.
 Read NOW, before you start: "protocol" (the Evidence→Facts→Decision + decide-the-covering-set-then-batch method) and "${own}" (your acquisition playbook).
-Re-read the moment you hit it: "dead-links-black-box" (a transfer fails, or every candidate title is opaque), "dedup" (the same episode lands more than once), "mistakes" (worked right/wrong examples).
-Available sections: protocol, ${own}, dead-links-black-box, dedup, mistakes.`;
+Re-read the moment you hit it: "search" (your first searches return junk / 0 / wrong works — the per-media-type keyword recipes), "dead-links-black-box" (a transfer fails, or every candidate title is opaque), "dedup" (the same episode lands more than once), "mistakes" (worked right/wrong examples).
+Available sections: protocol, ${own}, search, dead-links-black-box, dedup, mistakes.`;
 }
