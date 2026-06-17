@@ -34,25 +34,26 @@ export function TmdbApiKeyForm({ apiKeySet }: { apiKeySet: boolean }) {
   return (
     <div className="push-form">
       <p className="panel-note" style={{ marginBottom: 12 }}>
-        默认元数据走作者的代理服务（已缓存、开箱即用）。想更稳可在{" "}
+        你在页面上看到的电影、剧集海报、简介、集数等数据，都来自{" "}
+        <a href="https://www.themoviedb.org/" target="_blank" rel="noreferrer">
+          The Movie Database (TMDB)
+        </a>
+        。默认由作者的代理服务兜底（已缓存、开箱即用，无需任何配置）。想更稳定可去{" "}
         <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noreferrer">
-          TMDB
+          TMDB 申请自己的 API Read Token
         </a>{" "}
-        申请自己的 API Read Token 填入——直连你自己的额度；调不通时会自动回退到代理。留空不改动已保存的值。
+        填入直连你自己的额度；调不通时会自动回退到代理。留空不改动已保存的值。
       </p>
-      <div className="push-field">
-        <label className="push-label">TMDB API Read Token</label>
+      <div className="setting-row">
         <input
           type="password"
           className="setting-control"
           value={apiKey}
           onChange={(event) => setApiKey(event.target.value)}
-          placeholder={hasKey ? "已设置(留空不改)" : "eyJhbGciOi…（v4 read token）"}
+          placeholder={hasKey ? "已设置(留空不改)" : "TMDB API Read Token（eyJhbGciOi…）"}
           aria-label="TMDB API Key"
           autoComplete="off"
         />
-      </div>
-      <div className="setting-row" style={{ marginTop: 4 }}>
         <button type="button" className="primary-button" onClick={handleSave} disabled={isPending}>
           {isPending ? <LoaderCircle size={14} className="spin" aria-hidden /> : <Check size={14} aria-hidden />}
           保存
@@ -63,8 +64,12 @@ export function TmdbApiKeyForm({ apiKeySet }: { apiKeySet: boolean }) {
             清除
           </button>
         ) : null}
-        {result ? <span className="panel-note">{result}</span> : null}
       </div>
+      {result ? (
+        <p className="panel-note" style={{ marginTop: 10 }}>
+          {result}
+        </p>
+      ) : null}
     </div>
   );
 }
