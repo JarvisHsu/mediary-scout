@@ -259,7 +259,10 @@ export async function prepareTrackingTarget(input: TvTrackingTargetInput): Promi
       latestAiredEpisode,
       latestAiredSource,
     },
-    keyword: `${title} ${input.qualityPreference}`.trim(),
+    // Quality preference NEVER enters the keyword (search-methodology law): it
+    // filters out title matches and drifts to same-quality wrong works. Quality
+    // is post-recall selection guidance (getQualityGuidance), not a search term.
+    keyword: title,
   };
 }
 
@@ -360,7 +363,10 @@ export async function prepareSeriesTarget(input: {
       overview: details.overview,
     },
     seasons,
-    keyword: `${title} ${input.qualityPreference}`.trim(),
+    // Quality preference NEVER enters the keyword (search-methodology law): it
+    // filters out title matches and drifts to same-quality wrong works. Quality
+    // is post-recall selection guidance (getQualityGuidance), not a search term.
+    keyword: title,
   };
 }
 

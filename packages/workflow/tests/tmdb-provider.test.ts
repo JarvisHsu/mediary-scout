@@ -89,7 +89,7 @@ describe("TmdbMetadataProvider", () => {
         latestAiredEpisode: 14,
         latestAiredSource: "metadata",
       },
-      keyword: "翘楚 4K",
+      keyword: "翘楚",
     });
   });
 
@@ -152,7 +152,7 @@ describe("TmdbMetadataProvider", () => {
       latestAiredEpisode: 2,
       latestAiredSource: "metadata",
     });
-    expect(target.keyword).toBe("Show 1080p");
+    expect(target.keyword).toBe("Show"); // quality preference must NOT pollute the keyword
   });
 });
 
@@ -375,6 +375,6 @@ describe("TmdbSearchProvider", () => {
 
     expect(target.title.year).toBe(2001);
     expect(target.title.releaseDate).toBe("2001-07-20"); // full date kept for the reserve air-time gate
-    expect(target.keyword).toContain("千与千寻");
+    expect(target.keyword).toBe("千与千寻"); // bare title — no quality token in the keyword
   });
 });

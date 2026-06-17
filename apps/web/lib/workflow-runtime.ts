@@ -389,7 +389,7 @@ export async function queueCandidateSeries(candidateId: string): Promise<Candida
       totalEpisodes: season.episodeCount,
       latestAiredEpisode: season.latestAiredEpisode,
     })),
-    keyword: `${candidate.title} ${defaultQuality()}`.trim(),
+    keyword: candidate.title.trim(), // quality NEVER in the keyword (search-methodology law)
     repository: getWorkflowRepository(),
   });
   return {
@@ -581,7 +581,7 @@ function targetFromSearchCandidate(
   return {
     title,
     season: trackedSeason,
-    keyword: `${candidate.title} ${trackedSeason.qualityPreference}`.trim(),
+    keyword: candidate.title.trim(), // quality NEVER in the keyword (search-methodology law)
   };
 }
 
