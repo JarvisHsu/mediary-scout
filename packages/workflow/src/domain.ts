@@ -193,8 +193,6 @@ export interface NotificationReport {
   newlyObtained: string[];
   /** Aired-but-not-obtained genuine gaps. Never includes unaired episodes. */
   realMissing: string[];
-  /** Dominant quality of what actually landed (e.g. "2160p"), for richer pushes. */
-  quality?: string;
   /** TMDB poster path (e.g. "/abc.jpg"); rendered as an image in rich pushes via
    *  the TMDB CDN — no self-hosting. Null/absent → no poster. */
   posterPath?: string | null;

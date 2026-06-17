@@ -14,7 +14,7 @@ import {
   type TransferAttempt,
   type WorkflowStatus,
 } from "../domain.js";
-import { buildSeasonReport, buildSeriesReport, dominantQualityFromTransfer, formatReportPushText } from "../notification-report.js";
+import { buildSeasonReport, buildSeriesReport, formatReportPushText } from "../notification-report.js";
 import type { RunAcquisitionV2WorkflowResult } from "./workflow-v2.js";
 
 /**
@@ -29,6 +29,16 @@ import type { RunAcquisitionV2WorkflowResult } from "./workflow-v2.js";
  * init vs scheduled patrol) and single-season vs multi-season rollup — matching
  * the kinds/triggers the old workflow.ts emitted so the feed reads identically.
  */
+/** Pass landed size facts to a report builder only when both are present. */
+function sizeInput(input: { fileCount?: number; totalBytes?: number }): {
+  fileCount?: number;
+  totalBytes?: number;
+} {
+  return input.fileCount !== undefined && input.totalBytes !== undefined
+    ? { fileCount: input.fileCount, totalBytes: input.totalBytes }
+    : {};
+}
+
 export type V2BridgeMode = "type2" | "series" | "type3";
 
 export interface V2BridgeSeasonIntent {
@@ -78,7 +88,6 @@ export function bridgeV2WorkflowToResult(input: {
   // Newly obtained this run = was missing before, present now — per season.
   const newlyObtainedCodes = v2.missingBefore.filter((code) => !stillMissingSet.has(code));
 
-  const quality = dominantQualityFromTransfer(v2.outcome.resourceSnapshots, v2.outcome.transferAttempts);
   const notification = buildNotification({
     title,
     mode: input.mode,
@@ -87,7 +96,9 @@ export function bridgeV2WorkflowToResult(input: {
     newlyObtainedCodes,
     workflowRunId,
     now: input.now,
-    ...(quality ? { quality } : {}),
+    ...(v2.landedFileCount !== undefined && v2.landedBytes !== undefined
+      ? { fileCount: v2.landedFileCount, totalBytes: v2.landedBytes }
+      : {}),
   });
 
   return {
@@ -187,7 +198,8 @@ function buildNotification(input: {
   newlyObtainedCodes: string[];
   workflowRunId: string;
   now: () => string;
-  quality?: string;
+  fileCount?: number;
+  totalBytes?: number;
 }): NotificationEvent {
   const { title, mode, seasons, status, workflowRunId } = input;
   const noCoverage = status === "no_coverage";
@@ -199,7 +211,7 @@ function buildNotification(input: {
       seasons: seasons.map((entry) => ({ season: entry.season, episodes: entry.episodes })),
       noCoverage,
       meta: titleMeta,
-      ...(input.quality ? { quality: input.quality } : {}),
+      ...sizeInput(input),
     });
     return {
       id: `notification_${workflowRunId}`,
@@ -226,7 +238,7 @@ function buildNotification(input: {
     newlyObtained,
     noCoverage,
     meta: titleMeta,
-    ...(input.quality ? { quality: input.quality } : {}),
+    ...sizeInput(input),
   });
 
   if (mode === "type3") {

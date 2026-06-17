@@ -4,16 +4,19 @@ import {
   buildSeasonReport,
   buildSeriesReport,
   createEpisodeStates,
-  dominantQuality,
-  dominantQualityFromTransfer,
   episodeCode,
+  formatBytes,
   formatDailyDigestPushText,
   formatReportPushText,
+  landedSize,
   type EpisodeState,
   type NotificationEvent,
   type NotificationReportStatus,
   type TrackedSeason,
 } from "../src/index.js";
+
+const MB = 1024 * 1024;
+const GB = 1024 * MB;
 
 function scheduledNotification(input: {
   titleName: string;
@@ -21,6 +24,8 @@ function scheduledNotification(input: {
   kind: string;
   newlyObtained: string[];
   realMissing: string[];
+  fileCount?: number;
+  totalBytes?: number;
 }): NotificationEvent {
   const status: NotificationReportStatus =
     input.realMissing.length > 0
@@ -43,6 +48,8 @@ function scheduledNotification(input: {
       lines: input.kind === "tracking_completed" ? ["全部获取，不再追踪"] : ["已获取至最新"],
       newlyObtained: input.newlyObtained,
       realMissing: input.realMissing,
+      ...(input.fileCount !== undefined ? { fileCount: input.fileCount } : {}),
+      ...(input.totalBytes !== undefined ? { totalBytes: input.totalBytes } : {}),
     },
   };
 }
@@ -81,59 +88,47 @@ function codes(seasonNumber: number, from: number, to: number): string[] {
   return result;
 }
 
-describe("resource quality in notifications", () => {
-  it("picks the highest quality tier present across file names", () => {
-    expect(dominantQuality(["Off.Campus.S01E01.2160p.AMZN.WEB-DL.mkv"])).toBe("2160p");
-    expect(dominantQuality(["Show.S01E01.1080p.mkv", "Show.S01E02.720p.mkv"])).toBe("1080p");
-    expect(dominantQuality(["Movie.4K.UHD.BluRay.mkv"])).toBe("2160p");
-    expect(dominantQuality(["plain.mkv"])).toBeUndefined();
+describe("formatBytes", () => {
+  it("renders MB under a gigabyte and GB at/above it (one decimal)", () => {
+    expect(formatBytes(410 * MB)).toBe("410 MB");
+    expect(formatBytes(Math.round(1.4 * GB))).toBe("1.4 GB");
+    expect(formatBytes(2 * GB)).toBe("2.0 GB");
   });
 
-  it("derives quality from the SUCCEEDED transfer's candidate title (no extra 115 read)", () => {
-    const snap = (candidates: Array<{ id: string; title: string }>) => ({
-      id: "s1",
-      provider: "pansou" as const,
-      keyword: "热辣滚烫",
-      createdAt: "2026-06-16T00:00:00.000Z",
-      candidates: candidates.map((c, i) => ({
-        id: c.id,
-        snapshotId: "s1",
-        index: i,
-        title: c.title,
-        type: "115" as const,
-        source: "pansou" as const,
-        episodeHints: [],
-        qualityHints: [],
-        providerPayload: {},
-      })),
+  it("falls back to KB below a megabyte (never a bare byte count)", () => {
+    expect(formatBytes(512 * 1024)).toBe("512 KB");
+  });
+});
+
+describe("landedSize", () => {
+  it("shows real per-episode size for a series (total / file count), never a claimed quality", () => {
+    const report = buildSeasonReport({
+      titleName: "一人之下",
+      season: season({ totalEpisodes: 12, latestAiredEpisode: 12 }),
+      episodes: episodes({ season: season({ totalEpisodes: 12, latestAiredEpisode: 12 }), obtained: codes(1, 1, 12) }),
+      fileCount: 12,
+      totalBytes: 12 * 410 * MB,
     });
-    const snapshots = [snap([
-      { id: "c1", title: "热辣滚烫 2024 2160p WEB-DL" },
-      { id: "c2", title: "热辣滚烫 1080p" },
-    ])];
-    const succeeded = { id: "a1", workflowRunId: "r", candidateId: "c1", status: "succeeded" as const, providerMessage: "", materializedFileIds: ["f1"] };
-    expect(dominantQualityFromTransfer(snapshots, [succeeded])).toBe("2160p");
-    // no succeeded transfer → undefined (don't guess)
-    expect(dominantQualityFromTransfer(snapshots, [{ ...succeeded, status: "failed" as const }])).toBeUndefined();
-    expect(dominantQualityFromTransfer([], [])).toBeUndefined();
+    expect(landedSize(report)).toEqual({ label: "每集", value: "约 410 MB" });
   });
 
-  it("surfaces the acquired quality in the push so the message isn't bare", () => {
-    const movie = buildMovieReport("周处除三害", "2160p");
-    expect(movie.quality).toBe("2160p");
-    expect(formatReportPushText(movie)).toContain("🎞 画质：2160p");
+  it("shows the total volume for a movie (one file)", () => {
+    const movie = buildMovieReport("周处除三害", undefined, { fileCount: 1, totalBytes: Math.round(1.4 * GB) });
+    expect(landedSize(movie)).toEqual({ label: "体积", value: "1.4 GB" });
   });
 
-  it("carries title meta (poster/tmdbId/year) into the report for rich pushes", () => {
-    const movie = buildMovieReport("周处除三害", "2160p", { posterPath: "/p.jpg", tmdbId: 996154, mediaType: "movie", year: 2024 });
-    expect(movie).toMatchObject({ posterPath: "/p.jpg", tmdbId: 996154, mediaType: "movie", year: 2024 });
-    const season = buildSeasonReport({
-      titleName: "迷雾追踪",
-      season: { id: "s", mediaTitleId: "t", seasonNumber: 1, status: "active", qualityPreference: "1080p", storageDirectoryId: "d", totalEpisodes: 12, latestAiredEpisode: 6, latestAiredSource: "metadata" },
-      episodes: [],
-      meta: { posterPath: "/q.jpg", tmdbId: 222, mediaType: "tv" },
-    });
-    expect(season).toMatchObject({ posterPath: "/q.jpg", tmdbId: 222, mediaType: "tv" });
+  it("is undefined when size facts are missing or zero (omit, never guess)", () => {
+    expect(landedSize(buildMovieReport("奥本海默"))).toBeUndefined();
+    expect(
+      landedSize(
+        buildMovieReport("空", undefined, { fileCount: 0, totalBytes: 0 }),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("carries fileCount/totalBytes onto the report so renderers can read them", () => {
+    const movie = buildMovieReport("周处除三害", { posterPath: "/p.jpg", tmdbId: 996154, mediaType: "movie", year: 2024 }, { fileCount: 1, totalBytes: 2 * GB });
+    expect(movie).toMatchObject({ posterPath: "/p.jpg", tmdbId: 996154, year: 2024, fileCount: 1, totalBytes: 2 * GB });
   });
 });
 
@@ -253,6 +248,31 @@ describe("formatReportPushText", () => {
     expect(text).toContain("本次新增：E10");
     expect(text).toContain("缺集：E05");
   });
+
+  it("renders per-episode size for a series and total volume for a movie", () => {
+    const s = season({ totalEpisodes: 12, latestAiredEpisode: 12 });
+    const seriesText = formatReportPushText(
+      buildSeasonReport({
+        titleName: "一人之下",
+        season: s,
+        episodes: episodes({ season: s, obtained: codes(1, 1, 12) }),
+        fileCount: 12,
+        totalBytes: 12 * 410 * MB,
+      }),
+    );
+    expect(seriesText).toContain("🎞 每集：约 410 MB");
+
+    const movieText = formatReportPushText(
+      buildMovieReport("周处除三害", undefined, { fileCount: 1, totalBytes: Math.round(1.4 * GB) }),
+    );
+    expect(movieText).toContain("🎞 体积：1.4 GB");
+    // The unreliable claimed-quality line is gone for good.
+    expect(movieText).not.toContain("画质");
+  });
+
+  it("omits the size line when size facts are absent (never a bare 🎞)", () => {
+    expect(formatReportPushText(buildMovieReport("奥本海默"))).not.toContain("🎞");
+  });
 });
 
 describe("formatDailyDigestPushText", () => {
@@ -287,6 +307,21 @@ describe("formatDailyDigestPushText", () => {
     ]);
     expect(text).toContain("**翘楚 第 1 季**"); // bold name renders on Server酱
     expect(text).toMatch(/^- /m); // markdown bullet, not a "·" text prefix
+  });
+
+  it("appends per-episode size to a changed show's digest line when known", () => {
+    const text = formatDailyDigestPushText([
+      scheduledNotification({
+        titleName: "一人之下",
+        seasonLabel: "第 6 季",
+        kind: "episodes_restored",
+        newlyObtained: ["E04"],
+        realMissing: [],
+        fileCount: 12,
+        totalBytes: 12 * 410 * MB,
+      }),
+    ]);
+    expect(text).toContain("约 410 MB");
   });
 
   it("a changed show with no episode delta shows its concrete progress line, not a vague 已更新", () => {

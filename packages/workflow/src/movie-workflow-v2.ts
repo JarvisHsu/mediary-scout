@@ -13,9 +13,10 @@ import {
   type TransferAttempt,
   type WorkflowStatus,
 } from "./domain.js";
-import { buildMovieReport, dominantQualityFromTransfer, formatReportPushText } from "./notification-report.js";
+import { buildMovieReport, formatReportPushText } from "./notification-report.js";
 import type { ResourceProvider, StorageExecutor } from "./ports.js";
 import type { DeadLinkStore } from "./acquisition-v2/dead-links.js";
+import { readLandedSize, type LandedSize } from "./acquisition-v2/landed-size.js";
 import { runAcquisitionV2 } from "./acquisition-v2/orchestrator.js";
 import { getSearchRecipe } from "./acquisition-v2/search-profile.js";
 
@@ -84,6 +85,10 @@ export async function runMovieAcquisitionV2(
   // workflow records that, it does not re-derive obtained by counting files.
   const obtained = v2.coverage.coverageMet;
 
+  // Real landed volume for the push (best-effort; never fails the run). The
+  // movie dir IS the staging+final location, so its video file(s) are the film.
+  const landed = obtained ? await readLandedSize(request.storage, [movieDirectoryId]) : undefined;
+
   return buildResult({
     request,
     movieDirectoryId,
@@ -93,6 +98,7 @@ export async function runMovieAcquisitionV2(
     snapshots: v2.outcome.resourceSnapshots,
     attempts: v2.outcome.transferAttempts,
     decisions: v2.outcome.decisions,
+    ...(landed ? { landed } : {}),
     now,
   });
 }
@@ -106,6 +112,7 @@ function buildResult(input: {
   snapshots: ResourceSnapshot[];
   attempts: TransferAttempt[];
   decisions: AgentDecision[];
+  landed?: LandedSize;
   now: () => string;
 }): MovieWorkflowResult {
   const season: TrackedSeason = movieAnchorSeason({
@@ -121,12 +128,11 @@ function buildResult(input: {
   }).map((episode) => ({ ...episode, obtained: input.obtained }));
 
   const t = input.request.title;
-  const baseReport = buildMovieReport(t.title, dominantQualityFromTransfer(input.snapshots, input.attempts), {
-    posterPath: t.posterPath ?? null,
-    tmdbId: t.tmdbId,
-    mediaType: t.type,
-    year: t.year,
-  });
+  const baseReport = buildMovieReport(
+    t.title,
+    { posterPath: t.posterPath ?? null, tmdbId: t.tmdbId, mediaType: t.type, year: t.year },
+    input.landed,
+  );
   const report = input.obtained
     ? baseReport
     : { ...baseReport, status: "no_coverage" as const, lines: ["暂未找到可用资源 · 将持续尝试"] };

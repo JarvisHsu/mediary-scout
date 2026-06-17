@@ -15,6 +15,7 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import type { NotificationEvent, NotificationReportStatus } from "@media-track/workflow";
+import { landedSize } from "@media-track/workflow";
 import { AppSidebar } from "../../components/app-sidebar";
 import { ensureDemoSeeded, getWorkflowRepository } from "../../lib/workflow-runtime";
 
@@ -148,7 +149,8 @@ function NotificationCard({ notification }: { notification: NotificationEvent })
   // drop it so the card carries no duplicated sentence. Seasons keep their
   // informative progress line(s).
   const lines = report.status === "acquired" ? [] : report.lines;
-  const hasChips = report.newlyObtained.length > 0 || report.realMissing.length > 0 || Boolean(report.quality);
+  const size = landedSize(report);
+  const hasChips = report.newlyObtained.length > 0 || report.realMissing.length > 0 || Boolean(size);
   // The same TMDB poster the push uses — a small thumbnail turns the row into a
   // proper media card (parity with the WeChat/Bark notification).
   const posterUrl = report.posterPath ? `${TMDB_FEED_POSTER}${report.posterPath}` : null;
@@ -188,11 +190,11 @@ function NotificationCard({ notification }: { notification: NotificationEvent })
         <div className="feed-card-chips">
           <ChipGroup label="本次新增" codes={report.newlyObtained} variant="is-new" />
           <ChipGroup label="缺集" codes={report.realMissing} variant="is-missing" />
-          {report.quality ? (
+          {size ? (
             <span className="feed-chip-group">
-              <span className="feed-chip-label">画质</span>
+              <span className="feed-chip-label">{size.label}</span>
               <span className="feed-chips">
-                <span className="feed-chip">{report.quality}</span>
+                <span className="feed-chip">{size.value}</span>
               </span>
             </span>
           ) : null}

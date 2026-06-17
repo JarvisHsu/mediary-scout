@@ -6,6 +6,7 @@ import {
   type AcquisitionDirectories,
 } from "./directory-lifecycle.js";
 import type { DeadLinkStore } from "./dead-links.js";
+import { readLandedSize } from "./landed-size.js";
 import { runAcquisitionV2, type AcquisitionV2Outcome } from "./orchestrator.js";
 import { syncSeasonNeed } from "./sync-need.js";
 
@@ -54,6 +55,10 @@ export interface RunAcquisitionV2WorkflowResult {
   stillMissing: string[];
   obtained: string[];
   providerAhead: string[];
+  /** Real landed video files across the season dirs (best-effort, post-run); fuels
+   *  the notification's true per-episode size. Absent when the read failed/empty. */
+  landedFileCount?: number;
+  landedBytes?: number;
 }
 
 const EMPTY_OUTCOME: AcquisitionV2Outcome = { resourceSnapshots: [], decisions: [], transferAttempts: [] };
@@ -128,6 +133,16 @@ export async function runAcquisitionV2Workflow(
     seasons: seasonsForSync,
     obtained: [...priorObtained, ...v2.coverage.obtained],
   });
+
+  // Best-effort real landed size for the notification (true per-episode bytes,
+  // not a claimed quality). Reads AFTER the acquisition succeeded; on the heavy
+  // run where the 240-call budget is spent this returns undefined rather than
+  // throwing, so the size is simply omitted — never failing a good run.
+  const landed = await readLandedSize(
+    request.executor,
+    Object.values(directories.seasonDirectoryIds),
+  );
+
   return {
     directories,
     missingBefore: before.missing,
@@ -136,6 +151,7 @@ export async function runAcquisitionV2Workflow(
     stillMissing: after.missing,
     obtained: after.obtained,
     providerAhead: after.providerAhead,
+    ...(landed ? { landedFileCount: landed.fileCount, landedBytes: landed.totalBytes } : {}),
   };
     },
   );

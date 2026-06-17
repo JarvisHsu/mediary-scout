@@ -1,5 +1,5 @@
 import type { NotificationEvent, NotificationReport } from "./domain.js";
-import { formatReportPushText } from "./notification-report.js";
+import { formatReportPushText, landedSize } from "./notification-report.js";
 
 /**
  * Outbound push: the in-app feed is the source of truth; these channels are
@@ -19,12 +19,6 @@ export interface NotifyMessage {
 
 /** TMDB's own CDN serves posters from the stored posterPath — no self-hosting. */
 const TMDB_POSTER_BASE = "https://image.tmdb.org/t/p/w500";
-
-function formatBytes(bytes: number): string {
-  if (bytes >= 1e9) return `${(bytes / 1e9).toFixed(1)} GB`;
-  if (bytes >= 1e6) return `${Math.round(bytes / 1e6)} MB`;
-  return `${Math.round(bytes / 1e3)} KB`;
-}
 
 /**
  * Render a notification report into one rich push message (L2): a poster image, a
@@ -57,14 +51,9 @@ export function buildNotifyMessage(
   for (const line of report.lines) {
     md.push(`- ${line}`);
   }
-  if (report.quality) {
-    md.push(`- 画质：${report.quality}`);
-  }
-  if (report.fileCount !== undefined || report.totalBytes !== undefined) {
-    const bits: string[] = [];
-    if (report.fileCount !== undefined) bits.push(`${report.fileCount} 文件`);
-    if (report.totalBytes !== undefined) bits.push(formatBytes(report.totalBytes));
-    md.push(`- ${bits.join(" · ")}`);
+  const size = landedSize(report);
+  if (size) {
+    md.push(`- ${size.label}：${size.value}`);
   }
   if (report.landingDir) {
     md.push(`- 落盘：${report.landingDir}`);

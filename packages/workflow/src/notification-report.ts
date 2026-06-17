@@ -5,9 +5,7 @@ import type {
   NotificationEvent,
   NotificationReport,
   NotificationReportStatus,
-  ResourceSnapshot,
   TrackedSeason,
-  TransferAttempt,
 } from "./domain.js";
 
 /** "S01E13" -> "E13". The season is already in the card's title row. */
@@ -75,10 +73,23 @@ export interface SeasonReportInput {
   newlyObtained?: string[];
   /** Force the no-coverage shape regardless of episode facts. */
   noCoverage?: boolean;
-  /** Dominant quality of the landed files (e.g. "2160p"), surfaced in pushes. */
-  quality?: string;
+  /** Real landed video files: count + summed bytes. The card/push show the true
+   *  per-episode size from these (总字节 / 文件数), not a claimed quality tag. */
+  fileCount?: number;
+  totalBytes?: number;
   /** Poster/tmdbId/year for richer pushes. */
   meta?: NotificationTitleMeta;
+}
+
+/** Only attach size facts when BOTH are present — a half-known size is omitted,
+ *  never guessed (mirrors how an absent quality used to drop the line). */
+function sizeFields(input: { fileCount?: number; totalBytes?: number }): {
+  fileCount?: number;
+  totalBytes?: number;
+} {
+  return input.fileCount !== undefined && input.totalBytes !== undefined
+    ? { fileCount: input.fileCount, totalBytes: input.totalBytes }
+    : {};
 }
 
 /**
@@ -134,7 +145,7 @@ export function buildSeasonReport(input: SeasonReportInput): NotificationReport 
     lines,
     newlyObtained,
     realMissing,
-    ...(input.quality ? { quality: input.quality } : {}),
+    ...sizeFields(input),
     ...(input.meta ?? {}),
   };
 }
@@ -154,7 +165,8 @@ export function buildSeriesReport(input: {
   seasons: SeriesReportSeasonInput[];
   noCoverage?: boolean;
   meta?: NotificationTitleMeta;
-  quality?: string;
+  fileCount?: number;
+  totalBytes?: number;
 }): NotificationReport {
   if (input.noCoverage) {
     return {
@@ -212,7 +224,7 @@ export function buildSeriesReport(input: {
     lines,
     newlyObtained: [],
     realMissing: partial.flatMap((entry) => entry.missing),
-    ...(input.quality ? { quality: input.quality } : {}),
+    ...sizeFields(input),
     ...(input.meta ?? {}),
   };
 }
@@ -226,7 +238,11 @@ export interface NotificationTitleMeta {
 }
 
 /** Movie / one-off: nothing to track, just acquired. */
-export function buildMovieReport(titleName: string, quality?: string, meta?: NotificationTitleMeta): NotificationReport {
+export function buildMovieReport(
+  titleName: string,
+  meta?: NotificationTitleMeta,
+  size?: { fileCount: number; totalBytes: number },
+): NotificationReport {
   return {
     titleName,
     seasonLabel: null,
@@ -234,7 +250,7 @@ export function buildMovieReport(titleName: string, quality?: string, meta?: Not
     lines: ["已获取入库"],
     newlyObtained: [],
     realMissing: [],
-    ...(quality ? { quality } : {}),
+    ...sizeFields(size ?? {}),
     ...(meta ?? {}),
   };
 }
@@ -264,58 +280,42 @@ export function formatReportPushText(report: NotificationReport): string {
   if (report.realMissing.length > 0) {
     parts.push(`🔴 缺集：${report.realMissing.join("、")}`);
   }
-  if (report.quality) {
-    parts.push(`🎞 画质：${report.quality}`);
+  const size = landedSize(report);
+  if (size) {
+    parts.push(`🎞 ${size.label}：${size.value}`);
   }
   return parts.join("\n");
 }
 
-/**
- * The dominant quality across landed files, for notifications. Picks the
- * highest tier present (4K/2160p > 1080p > 720p …); empty when none is stated.
- */
-export function dominantQuality(fileNames: string[]): string | undefined {
-  const tiers = [
-    { label: "2160p", re: /\b(2160p|4k|uhd)\b/i },
-    { label: "1080p", re: /\b1080p\b/i },
-    { label: "720p", re: /\b720p\b/i },
-    { label: "480p", re: /\b480p\b/i },
-  ];
-  for (const tier of tiers) {
-    if (fileNames.some((name) => tier.re.test(name))) {
-      return tier.label;
-    }
+/** Human-readable byte size: KB below 1 MB, whole MB below 1 GB, else GB to one
+ *  decimal. Video files are large, so MB/GB is the common case. */
+export function formatBytes(bytes: number): string {
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) {
+    return `${Math.round(bytes / 1024)} KB`;
   }
-  return undefined;
-}
-
-/** {@link dominantQuality} over file records — the common workflow case, so the
- *  callers don't each repeat `files.map((f) => f.name)`. */
-export function dominantQualityOfFiles(files: { name: string }[]): string | undefined {
-  return dominantQuality(files.map((file) => file.name));
+  if (mb < 1024) {
+    return `${Math.round(mb)} MB`;
+  }
+  return `${(mb / 1024).toFixed(1)} GB`;
 }
 
 /**
- * Dominant quality derived from the SUCCEEDED transfer's candidate title — the
- * resource name (PanSou) carries the quality tag (2160p / 4K …), so we get it
- * for free from the run's snapshots+attempts, no extra 115 read. Undefined when
- * nothing succeeded or no tag is present (never guessed).
+ * The size line a card/push should show for a report — the TRUE landed volume,
+ * not a claimed quality tag. A movie (status "acquired", one file) shows its
+ * total volume; a series shows the real per-episode average (总字节 / 文件数, what
+ * exposed "几百 MB 不是 4K"). Undefined when size facts are absent — omit, never
+ * guess (the same contract the old quality line used).
  */
-export function dominantQualityFromTransfer(
-  snapshots: ResourceSnapshot[],
-  attempts: TransferAttempt[],
-): string | undefined {
-  const succeededIds = new Set(
-    attempts.filter((attempt) => attempt.status === "succeeded").map((attempt) => attempt.candidateId),
-  );
-  if (succeededIds.size === 0) {
+export function landedSize(report: NotificationReport): { label: string; value: string } | undefined {
+  const { fileCount, totalBytes } = report;
+  if (fileCount === undefined || totalBytes === undefined || fileCount <= 0 || totalBytes <= 0) {
     return undefined;
   }
-  const titles = snapshots
-    .flatMap((snapshot) => snapshot.candidates)
-    .filter((candidate) => succeededIds.has(candidate.id))
-    .map((candidate) => candidate.title);
-  return dominantQuality(titles);
+  if (report.status === "acquired") {
+    return { label: "体积", value: formatBytes(totalBytes) };
+  }
+  return { label: "每集", value: `约 ${formatBytes(totalBytes / fileCount)}` };
 }
 
 /**
@@ -342,17 +342,18 @@ export function formatDailyDigestPushText(notifications: NotificationEvent[]): s
       continue;
     }
     const head = report.seasonLabel ? `${report.titleName} ${report.seasonLabel}` : report.titleName;
-    const quality = report.quality ? ` · ${report.quality}` : "";
+    const size = landedSize(report);
+    const sizeSuffix = size ? ` · ${size.value}` : "";
     let detail: string;
     if (notification.kind === "tracking_completed") {
-      // Even a finale should say WHICH episodes were the last to land + quality,
+      // Even a finale should say WHICH episodes were the last to land + size,
       // so a single push carries real information, not just "追完".
       const gained = report.newlyObtained.length > 0 ? `（补齐 ${report.newlyObtained.join("、")}）` : "";
-      detail = `🎉 追完，全部获取${gained}${quality}`;
+      detail = `🎉 追完，全部获取${gained}${sizeSuffix}`;
     } else {
       const segments: string[] = [];
       if (report.newlyObtained.length > 0) {
-        segments.push(`新增 ${report.newlyObtained.join("、")}${quality}`);
+        segments.push(`新增 ${report.newlyObtained.join("、")}${sizeSuffix}`);
       }
       if (report.realMissing.length > 0) {
         segments.push(`缺 ${report.realMissing.join("、")}`);

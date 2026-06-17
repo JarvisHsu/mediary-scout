@@ -217,7 +217,8 @@ describe("buildNotifyMessage — rich per-channel push payload (L2)", () => {
       lines: ["已获取入库"],
       newlyObtained: [],
       realMissing: [],
-      quality: "2160p",
+      fileCount: 1,
+      totalBytes: Math.round(1.4 * 1024 * 1024 * 1024),
       posterPath: "/abc.jpg",
       tmdbId: 1184918,
       mediaType: "movie",
@@ -237,7 +238,9 @@ describe("buildNotifyMessage — rich per-channel push payload (L2)", () => {
     expect(msg.markdown).not.toContain("![](");
     // The head lives in the `title` field; the body must not repeat it as a heading.
     expect(msg.markdown).not.toContain("**热辣滚烫 (2024)**");
-    expect(msg.markdown).toContain("2160p");
+    // Real landed volume replaces the unreliable claimed quality.
+    expect(msg.markdown).toContain("体积：1.4 GB");
+    expect(msg.markdown).not.toContain("画质");
     expect(msg.markdown).toContain("https://app.example.com/show/1184918");
   });
 
