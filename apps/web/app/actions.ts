@@ -322,6 +322,40 @@ export async function clearTmdbApiKeyAction(): Promise<PushSettingsActionResult>
   }
 }
 
+export async function saveProwlarrConfigAction(input: {
+  baseURL: string;
+  apiKey: string;
+}): Promise<PushSettingsActionResult> {
+  try {
+    const { getWorkflowRepository, PROWLARR_BASE_URL_SETTING_KEY, PROWLARR_API_KEY_SETTING_KEY } = await import(
+      "../lib/workflow-runtime"
+    );
+    const repository = getWorkflowRepository();
+    await repository.setSetting(PROWLARR_BASE_URL_SETTING_KEY, input.baseURL.trim());
+    const apiKey = input.apiKey.trim();
+    if (apiKey) {
+      await repository.setSetting(PROWLARR_API_KEY_SETTING_KEY, apiKey);
+    }
+    return { success: true };
+  } catch (error) {
+    return { success: false, message: `保存失败：${String(error)}` };
+  }
+}
+
+export async function clearProwlarrConfigAction(): Promise<PushSettingsActionResult> {
+  try {
+    const { getWorkflowRepository, PROWLARR_BASE_URL_SETTING_KEY, PROWLARR_API_KEY_SETTING_KEY } = await import(
+      "../lib/workflow-runtime"
+    );
+    const repository = getWorkflowRepository();
+    await repository.setSetting(PROWLARR_BASE_URL_SETTING_KEY, "");
+    await repository.setSetting(PROWLARR_API_KEY_SETTING_KEY, "");
+    return { success: true };
+  } catch (error) {
+    return { success: false, message: `清除失败：${String(error)}` };
+  }
+}
+
 export async function testPushNotificationAction(
   settings: Record<string, string>,
 ): Promise<PushSettingsActionResult> {

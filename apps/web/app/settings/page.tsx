@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { Bell, Bot, Cable, CalendarClock, Clapperboard, Gauge, Languages, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Bell, Bot, Cable, CalendarClock, Clapperboard, Gauge, Languages, Radio, ShieldCheck, TriangleAlert } from "lucide-react";
 import { AppSidebar } from "../../components/app-sidebar";
 import { Pan115QrConnect } from "../../components/pan115-qr-connect";
 import { PushNotificationForm } from "../../components/push-notification-form";
@@ -8,6 +8,7 @@ import { PreferredLanguageForm } from "../../components/preferred-language-form"
 import { QualityPreferenceForm } from "../../components/quality-preference-form";
 import { LlmConfigForm } from "../../components/llm-config-form";
 import { TmdbApiKeyForm } from "../../components/tmdb-api-key-form";
+import { ProwlarrConfigForm } from "../../components/prowlarr-config-form";
 import { DailySweepForm } from "../../components/daily-sweep-form";
 import {
   getDailySweepTime,
@@ -19,6 +20,8 @@ import {
   LLM_MODEL_ID_SETTING_KEY,
   LLM_API_KEY_SETTING_KEY,
   TMDB_API_KEY_SETTING_KEY,
+  PROWLARR_BASE_URL_SETTING_KEY,
+  PROWLARR_API_KEY_SETTING_KEY,
 } from "../../lib/workflow-runtime";
 
 export default function SettingsPage() {
@@ -46,6 +49,9 @@ export default function SettingsPage() {
         </Suspense>
         <Suspense fallback={<div className="skeleton skeleton-heading" />}>
           <TmdbApiKeySection />
+        </Suspense>
+        <Suspense fallback={<div className="skeleton skeleton-heading" />}>
+          <ProwlarrSection />
         </Suspense>
         <Suspense fallback={<div className="skeleton skeleton-heading" />}>
           <DailySweepSection />
@@ -140,6 +146,28 @@ async function TmdbApiKeySection() {
         </div>
       </div>
       <TmdbApiKeyForm apiKeySet={apiKeySet} />
+    </section>
+  );
+}
+
+async function ProwlarrSection() {
+  await connection();
+  const repository = getWorkflowRepository();
+  const baseURL = (await repository.getSetting(PROWLARR_BASE_URL_SETTING_KEY)) ?? "";
+  const apiKeySet = Boolean((await repository.getSetting(PROWLARR_API_KEY_SETTING_KEY))?.trim());
+
+  return (
+    <section className="panel" style={{ maxWidth: 720, marginTop: 24 }}>
+      <div className="panel-header">
+        <div>
+          <h2 className="panel-title">
+            <Radio size={16} aria-hidden style={{ verticalAlign: "-2px", marginRight: 8 }} />
+            资源提供商 · Prowlarr
+          </h2>
+          <p className="panel-note">可选：接入 Prowlarr 索引器聚合，扩大可搜资源（磁力走 115 秒传）</p>
+        </div>
+      </div>
+      <ProwlarrConfigForm baseURL={baseURL} apiKeySet={apiKeySet} />
     </section>
   );
 }
