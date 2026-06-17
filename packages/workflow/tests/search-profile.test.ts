@@ -46,6 +46,16 @@ describe("getQualityGuidance", () => {
     expect(g).not.toMatch(/极少|没有|稀缺/); // reachable → not the scarcity warning
   });
 
+  it("high prefers playable REMUX/video and warns AGAINST 原盘/ISO disc images", () => {
+    // Live e2e caught a 100GB 4K BD原盘 .iso being picked — high quality but
+    // unplayable, not a single video. Guidance must steer to REMUX/video.
+    for (const p of ["movie", "us-tv", "jp-anime"] as const) {
+      const g = getQualityGuidance(p, "high");
+      expect(g).toContain("REMUX");
+      expect(g).toMatch(/避免[^]*?(ISO|原盘|BDMV)/); // AVOID disc images, not promote them
+    }
+  });
+
   it("high on a 4K-scarce profile warns 4K is rare and forbids over-searching", () => {
     for (const p of ["jp-anime", "cn-anime", "us-anime", "jp-tv"] as const) {
       const g = getQualityGuidance(p, "high");

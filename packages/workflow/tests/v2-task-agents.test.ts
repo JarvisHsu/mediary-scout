@@ -113,6 +113,7 @@ describe("Movie system prompt carries movie-specific invariants", () => {
   it.each([
     [/remake|same work|identity|year/i, "identity / year / no remake"],
     [/single (video )?file|one file|not a pack|reject.*pack/i, "single video file"],
+    [/\.iso|原盘|BDMV|disc image/i, "reject 原盘/ISO/BDMV disc images — need a playable video"],
     [/LAST (action|step)|never mark before|in place|only after/i, "mark is the LAST step, only after the film is in place"],
     [/flattenMovie/, "flattenMovie is the movie extraction"],
     [/transferUntilLanded/, "transferUntilLanded for ranked 115 shares / dead links"],

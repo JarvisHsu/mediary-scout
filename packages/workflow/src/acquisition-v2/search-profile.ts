@@ -143,9 +143,10 @@ export function getQualityGuidance(
   }
   // high
   const head =
-    "画质偏好:高(≈4K)。召回后优先选 2160p / 4K / UHD / REMUX / 蓝光原盘(带 HDR/杜比视界更佳)的版本。";
+    "画质偏好:高(≈4K)。召回后优先选 2160p / 4K / UHD / REMUX 的【可播放视频文件】(mkv/mp4,带 HDR/杜比视界更佳)。" +
+    "⚠️ 避免蓝光原盘 / ISO / BDMV 整盘镜像:它动辄上百GB、多数设备无法直接播放,且不是单个视频文件——宁取 4K REMUX 视频,退一步取更低画质的视频版本,也不要整盘镜像。";
   const tail =
-    "覆盖永远优先于画质:找不到 4K 就退取 1080P/蓝光,绝不为画质放弃任何一集/这部片。" + QUALITY_KEYWORD_LAW;
+    "覆盖永远优先于画质:找不到 4K 就退取 1080P/蓝光视频,绝不为画质放弃任何一集/这部片。" + QUALITY_KEYWORD_LAW;
   if (HI_REACHABLE.has(profile)) {
     return head + "这类内容真 4K 通常存在,值得在已召回候选里挑高的。" + tail;
   }
