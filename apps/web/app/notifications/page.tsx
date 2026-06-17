@@ -74,6 +74,24 @@ async function NotificationFeed() {
   await ensureDemoSeeded(repository);
   const notifications = await repository.listNotifications({ limit: 100 });
 
+  // Poster backfill: older notifications predate report.posterPath. Source the
+  // poster from the still-tracked title (by tmdbId, then name) so cards show a
+  // real poster instead of nothing.
+  const trackedStates = await repository.listTrackedSeasonStates();
+  const posterByTmdb = new Map<number, string>();
+  const posterByName = new Map<string, string>();
+  for (const state of trackedStates) {
+    if (state.title.posterPath) {
+      posterByTmdb.set(state.title.tmdbId, state.title.posterPath);
+      posterByName.set(state.title.title, state.title.posterPath);
+    }
+  }
+  const fallbackPoster = (report: { posterPath?: string | null; tmdbId?: number; titleName: string }): string | null =>
+    report.posterPath ??
+    (report.tmdbId != null ? posterByTmdb.get(report.tmdbId) : undefined) ??
+    posterByName.get(report.titleName) ??
+    null;
+
   if (notifications.length === 0) {
     return (
       <div className="quiet-state">
@@ -98,7 +116,13 @@ async function NotificationFeed() {
               block.type === "routine" ? (
                 <RoutineCard key={block.id} items={block.items} time={block.time} />
               ) : (
-                <NotificationCard key={block.id} notification={block.notification} />
+                <NotificationCard
+                  key={block.id}
+                  notification={block.notification}
+                  fallbackPoster={
+                    block.notification.report ? fallbackPoster(block.notification.report) : null
+                  }
+                />
               ),
             )}
           </div>
@@ -109,7 +133,13 @@ async function NotificationFeed() {
 }
 
 /** One acquisition/tracking event — its own separated card. */
-function NotificationCard({ notification }: { notification: NotificationEvent }) {
+function NotificationCard({
+  notification,
+  fallbackPoster = null,
+}: {
+  notification: NotificationEvent;
+  fallbackPoster?: string | null;
+}) {
   const icon = kindIcon[notification.kind] ?? { tone: "muted", icon: Bell };
   const KindIcon = icon.icon;
   const report = notification.report;
@@ -155,7 +185,8 @@ function NotificationCard({ notification }: { notification: NotificationEvent })
   const hasChips = report.newlyObtained.length > 0 || report.realMissing.length > 0 || Boolean(size);
   // The same TMDB poster the push uses — a small thumbnail turns the row into a
   // proper media card (parity with the WeChat/Bark notification).
-  const posterUrl = report.posterPath ? `${TMDB_FEED_POSTER}${report.posterPath}` : null;
+  const posterPath = report.posterPath ?? fallbackPoster;
+  const posterUrl = posterPath ? `${TMDB_FEED_POSTER}${posterPath}` : null;
 
   return (
     <article className={`feed-card${posterUrl ? " has-poster" : ""}`} data-created-at={notification.createdAt}>
