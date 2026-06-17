@@ -17,6 +17,7 @@ import { buildMovieReport, formatReportPushText } from "./notification-report.js
 import type { ResourceProvider, StorageExecutor } from "./ports.js";
 import type { DeadLinkStore } from "./acquisition-v2/dead-links.js";
 import { readLandedSize, type LandedSize } from "./acquisition-v2/landed-size.js";
+import type { AgentToolEvent } from "./acquisition-v2/activity.js";
 import { runAcquisitionV2 } from "./acquisition-v2/orchestrator.js";
 import { getSearchRecipe } from "./acquisition-v2/search-profile.js";
 
@@ -42,6 +43,7 @@ export interface RunMovieAcquisitionV2Request {
   maxSteps?: number;
   preferredLanguage?: string;
   deadLinkStore?: DeadLinkStore;
+  onProgress?: (event: AgentToolEvent) => void;
   now?: () => string;
 }
 
@@ -78,6 +80,7 @@ export async function runMovieAcquisitionV2(
     ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),
     ...(request.deadLinkStore ? { deadLinkStore: request.deadLinkStore } : {}),
+    ...(request.onProgress ? { onProgress: request.onProgress } : {}),
   });
 
   // Truth = the AGENT'S coverage (its markObtained), NOT a mechanical file scan

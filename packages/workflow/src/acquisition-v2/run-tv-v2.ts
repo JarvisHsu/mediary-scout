@@ -10,6 +10,7 @@ import {
 import type { DeadLinkStore } from "./dead-links.js";
 import { runAcquisitionV2Workflow } from "./workflow-v2.js";
 import { getSearchRecipe, searchProfile } from "./search-profile.js";
+import type { AgentToolEvent } from "./activity.js";
 
 function defaultNowIso(): string {
   return new Date().toISOString();
@@ -39,6 +40,7 @@ export interface RunTvAcquisitionV2Request {
   maxSteps?: number;
   preferredLanguage?: string;
   deadLinkStore?: DeadLinkStore;
+  onProgress?: (event: AgentToolEvent) => void;
   now?: () => string;
 }
 
@@ -70,6 +72,7 @@ export async function runTvAcquisitionV2(request: RunTvAcquisitionV2Request): Pr
     ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),
     ...(request.deadLinkStore ? { deadLinkStore: request.deadLinkStore } : {}),
+    ...(request.onProgress ? { onProgress: request.onProgress } : {}),
   });
 
   return bridgeV2WorkflowToResult({

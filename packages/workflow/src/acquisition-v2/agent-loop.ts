@@ -7,6 +7,7 @@ import {
   buildRepetitionStop,
   reflectionSystemOverride,
 } from "./agent-loop-guards.js";
+import { interpretTool, type AgentToolEvent } from "./activity.js";
 
 /**
  * Phase 3 — the agent loop harness. The strong agent drives its own
@@ -32,20 +33,44 @@ async function asEvidence(run: () => Promise<unknown>): Promise<unknown> {
  * moves/marks, and the evidence that comes back. Off by default (silent in
  * tests); turned on for live e2e so the agent loop is not a black box.
  */
-function wrapWithLogging(tools: ToolSet): ToolSet {
+/**
+ * Wrap every tool's execute so each call can (a) emit a cleaned progress event for
+ * the activity page (always, when `onToolCall` is given) and (b) log the raw
+ * call/result to stdout (opt-in via MEDIA_TRACK_AGENT_LOG=1). The wrapper is a
+ * passthrough when neither is active. The progress emit is best-effort — a throw
+ * in `onToolCall` must never break the agent's tool execution.
+ */
+function wrapTools(
+  tools: ToolSet,
+  options: { onToolCall?: (toolName: string, args: Record<string, unknown>) => void; log: boolean },
+): ToolSet {
+  if (!options.onToolCall && !options.log) {
+    return tools;
+  }
   const wrapped: Record<string, unknown> = {};
   for (const [name, tool] of Object.entries(tools)) {
     const execute = (tool as { execute: (args: unknown, options: unknown) => Promise<unknown> }).execute;
     wrapped[name] = {
       ...(tool as object),
-      execute: async (args: unknown, options: unknown) => {
-        const argStr =
-          args && typeof args === "object" && Object.keys(args).length > 0
-            ? ` ${JSON.stringify(args).slice(0, 240)}`
-            : "";
-        console.log(`[agent] → ${name}${argStr}`);
-        const result = await execute(args, options);
-        console.log(`[agent] ← ${name}: ${JSON.stringify(result).slice(0, 400)}`);
+      execute: async (args: unknown, executeOptions: unknown) => {
+        if (options.onToolCall) {
+          try {
+            options.onToolCall(name, (args && typeof args === "object" ? args : {}) as Record<string, unknown>);
+          } catch {
+            // progress is a display nicety — never let it break a tool call
+          }
+        }
+        if (options.log) {
+          const argStr =
+            args && typeof args === "object" && Object.keys(args).length > 0
+              ? ` ${JSON.stringify(args).slice(0, 240)}`
+              : "";
+          console.log(`[agent] → ${name}${argStr}`);
+        }
+        const result = await execute(args, executeOptions);
+        if (options.log) {
+          console.log(`[agent] ← ${name}: ${JSON.stringify(result).slice(0, 400)}`);
+        }
         return result;
       },
     };
@@ -58,7 +83,10 @@ function wrapWithLogging(tools: ToolSet): ToolSet {
  *  movie-only `transferUntilLanded` is included only when `options.movie` — the
  *  TV/anime agent must NOT get it (it would confuse with multi-resource season
  *  coverage). */
-export function buildSandboxToolSet(sandbox: TaskSandbox, options: { movie?: boolean } = {}): ToolSet {
+export function buildSandboxToolSet(
+  sandbox: TaskSandbox,
+  options: { movie?: boolean; onToolCall?: (toolName: string, args: Record<string, unknown>) => void } = {},
+): ToolSet {
   const tools: Record<string, unknown> = {
     readSkill: {
       description:
@@ -150,7 +178,10 @@ export function buildSandboxToolSet(sandbox: TaskSandbox, options: { movie?: boo
     };
   }
   const toolSet = tools as ToolSet;
-  return process.env.MEDIA_TRACK_AGENT_LOG === "1" ? wrapWithLogging(toolSet) : toolSet;
+  return wrapTools(toolSet, {
+    ...(options.onToolCall ? { onToolCall: options.onToolCall } : {}),
+    log: process.env.MEDIA_TRACK_AGENT_LOG === "1",
+  });
 }
 
 export interface AcquisitionAgentRequest {
@@ -162,6 +193,9 @@ export interface AcquisitionAgentRequest {
   maxSteps?: number;
   /** Movie task → expose the movie-only transferUntilLanded tool. */
   movie?: boolean;
+  /** Per-tool-call live progress for the activity page (cleaned activity + phase
+   *  + raw name/args). Best-effort; absent in tests/headless. */
+  onProgress?: (event: AgentToolEvent) => void;
 }
 
 export interface AcquisitionAgentResult {
@@ -177,7 +211,16 @@ export interface AcquisitionAgentResult {
 export async function runAcquisitionAgent(
   request: AcquisitionAgentRequest,
 ): Promise<AcquisitionAgentResult> {
-  const tools = buildSandboxToolSet(request.sandbox, { movie: request.movie ?? false });
+  const onProgress = request.onProgress;
+  const tools = buildSandboxToolSet(request.sandbox, {
+    movie: request.movie ?? false,
+    ...(onProgress
+      ? {
+          onToolCall: (toolName: string, args: Record<string, unknown>) =>
+            onProgress({ toolName, args, ...interpretTool(toolName, args) }),
+        }
+      : {}),
+  });
   const maxSteps = request.maxSteps ?? DEFAULT_MAX_STEPS;
   const result = await generateText({
     model: request.model,

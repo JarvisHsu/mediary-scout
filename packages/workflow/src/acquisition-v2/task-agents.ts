@@ -1,5 +1,6 @@
 import type { LanguageModel } from "ai";
 import { runAcquisitionAgent, type AcquisitionAgentResult } from "./agent-loop.js";
+import type { AgentToolEvent } from "./activity.js";
 import type { TaskSandbox } from "./sandbox.js";
 import { skillIndexForAgent } from "./skill.js";
 
@@ -149,6 +150,7 @@ export interface RunTvAnimeRequest extends TaskAgentPromptOptions {
   model: LanguageModel;
   target: TvAnimeTarget;
   maxSteps?: number;
+  onProgress?: (event: AgentToolEvent) => void;
 }
 
 export interface RunMovieRequest extends TaskAgentPromptOptions {
@@ -156,10 +158,11 @@ export interface RunMovieRequest extends TaskAgentPromptOptions {
   model: LanguageModel;
   target: MovieTarget;
   maxSteps?: number;
+  onProgress?: (event: AgentToolEvent) => void;
 }
 
 export async function runTvAnimeTaskAgent(request: RunTvAnimeRequest): Promise<AcquisitionAgentResult> {
-  const { sandbox, model, target, maxSteps, ...promptOptions } = request;
+  const { sandbox, model, target, maxSteps, onProgress, ...promptOptions } = request;
   const seasonsLabel =
     target.seasons.length === 1 ? `season ${target.seasons[0]}` : `seasons ${target.seasons.join(", ")}`;
   const prompt = `Acquire the missing episodes for "${target.title}"${target.aliases.length ? ` (aliases: ${target.aliases.join(", ")})` : ""}, ${seasonsLabel}.
@@ -172,11 +175,12 @@ If one pack covers multiple seasons, distribute its files in ONE plan with a mov
     system: buildTvAnimeSystemPrompt(promptOptions),
     prompt,
     ...(maxSteps === undefined ? {} : { maxSteps }),
+    ...(onProgress ? { onProgress } : {}),
   });
 }
 
 export async function runMovieTaskAgent(request: RunMovieRequest): Promise<AcquisitionAgentResult> {
-  const { sandbox, model, target, maxSteps, ...promptOptions } = request;
+  const { sandbox, model, target, maxSteps, onProgress, ...promptOptions } = request;
   const prompt = `Acquire the movie "${target.title}" (${target.year})${target.aliases.length ? ` (aliases: ${target.aliases.join(", ")})` : ""}.
 This is the coverage need: the single MOVIE token. Cross-check title AND year so you do not grab a remake or same-IP different film.
 Quality preference: ${target.qualityPreference}.
@@ -188,5 +192,6 @@ Find the one correct film, transfer it, keep the directory clean, mark it presen
     prompt,
     movie: true,
     ...(maxSteps === undefined ? {} : { maxSteps }),
+    ...(onProgress ? { onProgress } : {}),
   });
 }

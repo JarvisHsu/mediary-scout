@@ -17,6 +17,13 @@ export interface AgentActivity {
   phase: AgentPhase;
 }
 
+/** A single tool call surfaced to the progress sink: the interpreted activity +
+ *  the raw name/args (the sink reads markObtained codes to accumulate obtained). */
+export interface AgentToolEvent extends AgentActivity {
+  toolName: string;
+  args: Record<string, unknown>;
+}
+
 function asArray(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }

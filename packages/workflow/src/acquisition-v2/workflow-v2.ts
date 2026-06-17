@@ -7,6 +7,7 @@ import {
 } from "./directory-lifecycle.js";
 import type { DeadLinkStore } from "./dead-links.js";
 import { readLandedSize } from "./landed-size.js";
+import type { AgentToolEvent } from "./activity.js";
 import { runAcquisitionV2, type AcquisitionV2Outcome } from "./orchestrator.js";
 import { syncSeasonNeed } from "./sync-need.js";
 
@@ -43,6 +44,7 @@ export interface RunAcquisitionV2WorkflowRequest {
   preferredLanguage?: string;
   searchHints?: string;
   deadLinkStore?: DeadLinkStore;
+  onProgress?: (event: AgentToolEvent) => void;
 }
 
 export interface RunAcquisitionV2WorkflowResult {
@@ -125,6 +127,7 @@ export async function runAcquisitionV2Workflow(
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),
     ...(request.searchHints === undefined ? {} : { searchHints: request.searchHints }),
     ...(request.deadLinkStore ? { deadLinkStore: request.deadLinkStore } : {}),
+    ...(request.onProgress ? { onProgress: request.onProgress } : {}),
   });
 
   // Reconcile from the AGENT'S coverage (its markObtained), NOT a 115 re-scan:

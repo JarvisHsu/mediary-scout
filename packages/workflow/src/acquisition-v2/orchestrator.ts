@@ -2,6 +2,7 @@ import type { LanguageModel } from "ai";
 import type { AgentDecision, ResourceSnapshot, TransferAttempt } from "../domain.js";
 import type { ResourceProvider, StorageExecutor } from "../ports.js";
 import type { AcquisitionAgentResult } from "./agent-loop.js";
+import type { AgentToolEvent } from "./activity.js";
 import { CandidateRegistry } from "./candidate-registry.js";
 import type { DeadLinkStore } from "./dead-links.js";
 import { RealResourceProviderV2 } from "./real-provider-adapter.js";
@@ -49,6 +50,8 @@ export interface RunAcquisitionV2Request {
   /** Filters known-dead candidates from search results before the agent sees them,
    *  and records newly-proven-dead links from failed transfers (#15). */
   deadLinkStore?: DeadLinkStore;
+  /** Per-tool-call live progress for the activity page (best-effort). */
+  onProgress?: (event: AgentToolEvent) => void;
 }
 
 /** The persistable trace of a V2 run, in the same shape the old serial path
@@ -98,6 +101,7 @@ export async function runAcquisitionV2(request: RunAcquisitionV2Request): Promis
     ...(request.maxSteps === undefined ? {} : { maxSteps: request.maxSteps }),
     ...(request.preferredLanguage === undefined ? {} : { preferredLanguage: request.preferredLanguage }),
     ...(request.searchHints === undefined ? {} : { searchHints: request.searchHints }),
+    ...(request.onProgress ? { onProgress: request.onProgress } : {}),
   };
 
   const result =

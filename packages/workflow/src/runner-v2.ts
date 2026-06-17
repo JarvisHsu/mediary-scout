@@ -10,6 +10,7 @@ import type {
 } from "./domain.js";
 import { runTvAcquisitionV2 } from "./acquisition-v2/run-tv-v2.js";
 import type { BridgedV2Result } from "./acquisition-v2/workflow-v2-bridge.js";
+import { makeProgressSink } from "./acquisition-v2/progress-sink.js";
 import { runMovieAcquisitionV2 } from "./movie-workflow-v2.js";
 import type { ResourceProvider, StorageExecutor } from "./ports.js";
 import type { WorkflowRepository } from "./repository.js";
@@ -102,6 +103,11 @@ export async function runType2InitializationV2AndPersist(
     model: input.model,
     workflowRunId: input.workflowRun.id,
     now: nowFromRun(input.workflowRun),
+    onProgress: makeProgressSink({
+      repository: input.repository,
+      workflowRunId: input.workflowRun.id,
+      neededHint: Math.min(input.season.latestAiredEpisode, input.season.totalEpisodes),
+    }),
     ...passthrough(input),
   });
 
@@ -139,6 +145,11 @@ export async function runType3MonitoringV2AndPersist(
     // 实有 = the DB obtained marks; the need is aired − these (NOT a 115 scan).
     priorObtained: input.episodes.filter((episode) => episode.obtained).map((episode) => episode.episodeCode),
     now: nowFromRun(input.workflowRun),
+    onProgress: makeProgressSink({
+      repository: input.repository,
+      workflowRunId: input.workflowRun.id,
+      neededHint: input.episodes.filter((episode) => episode.airStatus === "aired" && !episode.obtained).length,
+    }),
     ...passthrough(input),
   });
 
@@ -172,6 +183,14 @@ export async function runSeriesInitializationV2AndPersist(
     model: input.model,
     workflowRunId: input.workflowRun.id,
     now: nowFromRun(input.workflowRun),
+    onProgress: makeProgressSink({
+      repository: input.repository,
+      workflowRunId: input.workflowRun.id,
+      neededHint: input.seasons.reduce(
+        (sum, season) => sum + Math.min(season.latestAiredEpisode, season.totalEpisodes),
+        0,
+      ),
+    }),
     ...passthrough(input),
   });
 
@@ -233,6 +252,11 @@ export async function runMovieAcquisitionV2AndPersist(input: {
     moviesParentDirectoryId: input.categoryParentId,
     now: nowFromRun(input.workflowRun),
     deadLinkStore: input.repository,
+    onProgress: makeProgressSink({
+      repository: input.repository,
+      workflowRunId: input.workflowRun.id,
+      neededHint: 1,
+    }),
     ...(input.searchBudget === undefined ? {} : { searchBudget: input.searchBudget }),
     ...(input.maxSteps === undefined ? {} : { maxSteps: input.maxSteps }),
     ...(input.preferredLanguage === undefined ? {} : { preferredLanguage: input.preferredLanguage }),
