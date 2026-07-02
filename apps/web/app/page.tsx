@@ -9,6 +9,10 @@ import { DemoSessionLibrary } from "../components/demo-session-library";
 import { RememberQuery } from "../components/search-memory";
 import { SearchForm } from "../components/search-form";
 import { SeasonRequestMenu } from "../components/season-request-menu";
+import { ReSearchButton } from "../components/re-search-button";
+import { TrendingRecommendations } from "../components/trending-recommendations";
+import { SkillPanel } from "../components/skill-panel";
+import { fetchTrending } from "../lib/trending";
 import { getSearchView } from "../lib/search-page";
 import {
   getInProgressTitles,
@@ -104,8 +108,18 @@ async function HomeSurface({
               </p>
             ) : null}
             <Suspense key={`search-${query}`} fallback={<SearchResultsSkeleton />}>
-              <SearchResults query={query} storageId={storageId} />
+              <SearchResults query={query} storageId={storageId} basePath={basePath} />
             </Suspense>
+            {!query && (
+              <Suspense fallback={null}>
+                <TrendingSection basePath={basePath} />
+              </Suspense>
+            )}
+            {!query && (
+              <Suspense fallback={null}>
+                <SkillPanel basePath={basePath} />
+              </Suspense>
+            )}
           </section>
         ) : (
           <>
@@ -120,7 +134,7 @@ async function HomeSurface({
   );
 }
 
-async function SearchResults({ query, storageId }: { query: string; storageId?: string | undefined }) {
+async function SearchResults({ query, storageId, basePath }: { query: string; storageId?: string | undefined; basePath: string }) {
   const searchView = await getSearchView(query, storageId);
   // Library awareness on results: a tracked title shows WHICH seasons are
   // obtained and routes to the same title page as the library — search must
@@ -169,6 +183,7 @@ async function SearchResults({ query, storageId }: { query: string; storageId?: 
                 {searchView.cacheStatus === "hit" ? "，来自缓存" : ""}
               </p>
             </div>
+            <ReSearchButton query={query} basePath={basePath} />
           </div>
           {searchView.candidates.length > 0 ? (
             <div className="candidate-grid">
@@ -643,6 +658,25 @@ function LibrarySurfaceSkeleton() {
         <div className="skeleton skeleton-poster" />
       </div>
     </section>
+  );
+}
+
+async function TrendingSection({ basePath }: { basePath: string }) {
+  const [movies, tvShows] = await Promise.all([
+    fetchTrending("movie", "week"),
+    fetchTrending("tv", "week"),
+  ]);
+
+  if (movies.length === 0 && tvShows.length === 0) {
+    return null;
+  }
+
+  return (
+    <TrendingRecommendations
+      movies={movies}
+      tvShows={tvShows}
+      basePath={basePath}
+    />
   );
 }
 
