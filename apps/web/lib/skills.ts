@@ -1,3 +1,4 @@
+import type { TmdbAccess } from "@media-track/workflow";
 import {
   getAccountScopedSettings,
   getCurrentAccountId,
@@ -41,11 +42,6 @@ export interface SkillMediaItem {
   overview: string;
 }
 
-interface TmdbAccess {
-  baseUrl?: string | null;
-  bearerToken?: string | null;
-}
-
 // ---- TMDB API Helper ----
 
 async function tmdbFetch(
@@ -55,14 +51,14 @@ async function tmdbFetch(
 ): Promise<any> {
   for (const access of accesses) {
     try {
-      const base = access.baseUrl ?? "https://api.themoviedb.org";
+      const base = access.baseURL ?? "https://api.themoviedb.org";
       const url = new URL(path, base);
       Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
       url.searchParams.set("language", "zh-CN");
 
       const headers: Record<string, string> = {};
-      if (access.bearerToken) {
-        headers["Authorization"] = `Bearer ${access.bearerToken}`;
+      if (access.readToken) {
+        headers["Authorization"] = `Bearer ${access.readToken}`;
       }
 
       const controller = new AbortController();

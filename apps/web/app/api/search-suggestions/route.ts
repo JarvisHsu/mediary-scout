@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
         const timeout = setTimeout(() => controller.abort(), 2500);
 
         const headers: Record<string, string> = {};
-        if (access.bearerToken) {
-          headers["Authorization"] = `Bearer ${access.bearerToken}`;
+        if (access.readToken) {
+          headers["Authorization"] = `Bearer ${access.readToken}`;
         }
 
         const res = await fetch(url.toString(), {
