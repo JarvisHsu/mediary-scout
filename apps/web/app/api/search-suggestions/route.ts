@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
       try {
         const url = new URL(
           `/3/search/multi`,
-          access.baseUrl ?? "https://api.themoviedb.org",
+          access.baseURL ?? "https://api.themoviedb.org",
         );
         url.searchParams.set("query", q);
         url.searchParams.set("language", "zh-CN");
