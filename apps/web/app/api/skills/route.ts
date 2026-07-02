@@ -3,8 +3,8 @@ import {
   getAccountScopedSettings,
   getCurrentAccountId,
   getTmdbAccesses,
-} from "../../lib/workflow-runtime";
-import { getAllSkills, getSkillById } from "../../lib/skills";
+} from "../../../lib/workflow-runtime";
+import { getAllSkills, getSkillById } from "../../../lib/skills";
 
 /**
  * GET /api/skills — list all available skills

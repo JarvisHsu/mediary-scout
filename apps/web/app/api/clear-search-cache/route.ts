@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Pool } from "pg";
-import { postgresConnectionString } from "../../lib/workflow-runtime";
+import { postgresConnectionString } from "../../../lib/workflow-runtime";
 
 /**
  * Clear a single search cache entry so the next search re-fetches from TMDB.
