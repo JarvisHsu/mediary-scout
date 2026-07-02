@@ -21,7 +21,7 @@ export function SearchForm({
   const [inputValue, setInputValue] = useState("");
 
   const handleSubmit = useCallback(
-    (event: React.FormEvent) => {
+    (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       setSuggestionsVisible(false);
       const value =
