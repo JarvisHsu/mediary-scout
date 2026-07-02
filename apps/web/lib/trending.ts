@@ -27,13 +27,13 @@ export async function fetchTrending(
 
   for (const access of accesses) {
     try {
-      const base = access.baseUrl ?? "https://api.themoviedb.org";
+      const base = access.baseURL ?? "https://api.themoviedb.org";
       const url = new URL(`/3/trending/${mediaType}/${timeWindow}`, base);
       url.searchParams.set("language", "zh-CN");
 
       const headers: Record<string, string> = {};
-      if (access.bearerToken) {
-        headers["Authorization"] = `Bearer ${access.bearerToken}`;
+      if (access.readToken) {
+        headers["Authorization"] = `Bearer ${access.readToken}`;
       }
 
       const controller = new AbortController();
