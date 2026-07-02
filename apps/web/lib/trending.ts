@@ -62,7 +62,7 @@ export async function fetchTrending(
         tmdbId: item.id,
         mediaType,
         title: item.title ?? item.name ?? "",
-        posterPath: item.poster_path,
+        posterPath: item.poster_path ?? null,
         year: (item.release_date ?? item.first_air_date ?? "").slice(0, 4),
         overview: item.overview ?? "",
       }));
